@@ -33,7 +33,7 @@ function _arrayToBuilds(ids) {
 
 function _getItems(champ, position) {
   const riot_items = store.get('item_names');
-  return request(`http://www.leagueofgraphs.com/champions/items/${champ.toLowerCase()}/${position}/platinum`)
+  return request.get(`http://www.leagueofgraphs.com/champions/items/${champ.toLowerCase()}/${position}/platinum`)
     .then(cheerio.load)
     .then($c => {
       // Starter Items

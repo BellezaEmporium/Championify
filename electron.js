@@ -1,20 +1,25 @@
-import { app, BrowserWindow } from 'electron';
-import fs from 'fs';
-import path from 'path';
-import R from 'ramda';
+const { app, BrowserWindow } = require('electron');
+const fs = require('fs');
+const path = require('path');
+const R = require('ramda');
 
 // Used for Squirrel install on Windows
 if (require('electron-squirrel-startup')) app.quit();
 
-const dev_enabled = process.env.NODE_ENV === 'development' || fs.existsSync('./dev_enabled') || fs.existsSync(path.join(__dirname, '..', 'dev_enabled'));
+const devEnabled = process.env.NODE_ENV === 'development' ||
+  fs.existsSync(path.resolve(__dirname, 'dev_enabled')) ||
+  fs.existsSync(path.join(__dirname, '..', 'dev_enabled'));
 
-let main_window = null;
+let mainWindow = null;
+
 app.on('window-all-closed', () => {
-  app.quit();
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
 });
 
 app.on('ready', () => {
-  main_window = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     fullscreen: false,
     width: 450,
     height: 670,
@@ -22,17 +27,25 @@ app.on('ready', () => {
     resizable: false,
     show: false,
     frame: false,
-    title: 'Championify'
+    title: 'Championify',
+    webPreferences: {
+      nodeIntegration: true
+    }
   });
 
-  main_window.loadURL(`file://${__dirname}/index.html`);
-  if (dev_enabled) main_window.openDevTools({detach: true});
+  mainWindow.loadURL(`file://${path.join(__dirname, 'index.html')}`);
+  
+  if (devEnabled) {
+    mainWindow.webContents.openDevTools({ mode: 'detach' });
+  }
 
-  main_window.webContents.on('did-finish-load', () => {
-    if (!R.contains('--autorun', process.argv)) return main_window.show();
+  mainWindow.webContents.on('did-finish-load', () => {
+    if (!R.contains('--autorun', process.argv)) {
+      mainWindow.show();
+    }
   });
 
-  main_window.on('closed', () => {
-    main_window = null;
+  mainWindow.on('closed', () => {
+    mainWindow = null;
   });
 });

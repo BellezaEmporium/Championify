@@ -5,11 +5,11 @@ import esprima from 'esprima';
 import R from 'ramda';
 
 import ChampionifyErrors from '../errors.js';
-import { arrayToBuilds, cl, request, shorthandSkills, trinksCon } from '../helpers';
-import Log from '../logger';
-import progressbar from '../progressbar';
-import store from '../store';
-import T from '../translate';
+import { arrayToBuilds, cl, request, shorthandSkills, trinksCon } from '../helpers/index.js';
+import Log from '../logger.js';
+import progressbar from '../progressbar.js';
+import store from '../store.js';
+import T from '../translate.js';
 
 const default_schema = require('../../data/default.json');
 const csspaths = require('../../data/csspaths.json');
@@ -37,12 +37,12 @@ function formatForStore(champ, position, set_type, file_prefix, build) {
   if (set_type) title += ` ${set_type}`;
   const riot_json = R.merge(default_schema, {
     champion: champ,
-    title: `CGG ${title} ${store.get('championgg_ver')}`,
+    title: `CGG ${title} ${store.get('leagueofgraphs_ver')}`,
     blocks: build
   });
 
   if (store.get('settings').locksr) riot_json.map = 'SR';
-  return {champ, file_prefix, riot_json, source: 'championgg'};
+  return {champ, file_prefix, riot_json, source: 'leagueofgraphs'};
 }
 
 /**
@@ -50,33 +50,33 @@ function formatForStore(champ, position, set_type, file_prefix, build) {
  */
 
 export const source_info = {
-  name: 'Champion.gg',
-  id: 'championgg'
+  name: 'Leagueofgraphs',
+  id: 'leagueofgraphs'
 };
 
 
 /**
-  * Gets current version Champion.GG is using.
+  * Gets current version Leagueofgraphs is using.
   * @returns {Promise.<String|ChampionifyErrors.RequestError>} Championgg version
  */
 
 export function getVersion() {
   if (store.get('importing')) cl(T.t('cgg_version'));
-  return request('http://champion.gg/faq/')
+  return request('https://www.leagueofgraphs.com/')
     .then(body => {
       const $c = cheerio.load(body);
-      const champgg_ver = $c(csspaths.championgg.version).text();
-      store.set('championgg_ver', champgg_ver);
-      return champgg_ver;
+      const log_ver = $c('.patch').text().split('Patch: ')[1];
+      store.set('leagueofgraphs_ver', champgg_ver);
+      return log_ver;
     })
     .catch(err => {
-      throw new ChampionifyErrors.RequestError('Can\'t get Champion.gg version').causedBy(err);
+      throw new ChampionifyErrors.RequestError('Can\'t get Leagueofgraphs version').causedBy(err);
     });
 }
 
 
 /**
- * Parses Champion.GG HTML.
+ * Parses LeagueOfGraphs HTML.
  * @param {Function} Cheerio instance.
  * @returns {Object} Object containing Champion data.
  */
@@ -97,10 +97,10 @@ function parseGGData($c) {
 }
 
 function getChampsAndPositions() {
-  return request('http://champion.gg')
+  return request('https://www.leagueofgraphs.com/')
     .then(body => {
       const $c = cheerio.load(body);
-      const links = $c('.champ-height')
+      const links = $c('.champion-box')
         .find('a')
         .map((idx, el) => $c(el).attr('href'))
         .get();
@@ -112,19 +112,19 @@ function getChampsAndPositions() {
           champ: entry[2],
           position: entry[3]
         })),
-        R.groupBy(R.prop('champ')),
-        R.map(R.pluck('position'))
+        R.groupBy(R.prop('champion-name')),
+        R.map(R.pluck('champion-role'))
       )(links);
     })
     .catch(err => {
-      throw new ChampionifyErrors.RequestError('Can\'t get Champion.gg champions').causedBy(err);
+      throw new ChampionifyErrors.RequestError('Can\'t get Leagueofgraphs champions').causedBy(err);
     });
 }
 
 /**
- * Process scraped Champion.GG page.
+ * Process scraped Leagueofgraphs page.
  * @param {Object} Champion object created by getSr
- * @param {String} Body of Champion.GG page
+ * @param {String} Body of Leagueofgraphs page
  */
 
 function processChamp(champ, body) {
@@ -133,10 +133,10 @@ function processChamp(champ, body) {
   try {
     gg = parseGGData($c);
   } catch (_error) {
-    throw new ChampionifyErrors.ParsingError(`Couldn't parse champion.gg script tag for ${champ}`);
+    throw new ChampionifyErrors.ParsingError(`Couldn't parse Leagueofgraphs script tag for ${champ}`);
   }
   if (!gg.champion || !gg.champion.roles) {
-    throw new ChampionifyErrors.ParsingError(`Couldn't parse roles from champion.gg script tag for ${champ}`);
+    throw new ChampionifyErrors.ParsingError(`Couldn't parse roles from Leagueofgraphs script tag for ${champ}`);
   }
 
   let current_position = '';

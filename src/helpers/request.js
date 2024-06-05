@@ -1,21 +1,17 @@
-import Promise from 'bluebird';
+import axios from 'axios';
+import retry from 'async-retry';
 import R from 'ramda';
-import retry from 'bluebird-retry';
-
 import ChampionifyErrors from '../errors';
-
-const requester = Promise.promisify(require('request'));
 
 /**
  * Request retry configuration
- * @type {{max_tries: number, interval: number, backoff: number, timeout: number, throw_original: boolean}}
+ * @type {{retries: number, minTimeout: number, factor: number, maxTimeout: number}}
  */
 const retry_options = {
-  max_tries: 3,
-  interval: 1000,
-  backoff: 2,
-  timeout: 30000,
-  throw_original: true
+  retries: 3,
+  minTimeout: 1000,
+  factor: 2,
+  maxTimeout: 30000
 };
 
 /**
@@ -121,24 +117,25 @@ export function request(options) {
 
   const hostname = getHostnameFromUrl(params.url);
 
-  return retry(() => {
+  return retry(async () => {
     return new Promise((resolve, reject) => {
       waiting_tasks.push({
         hostname: hostname,
-        start: () => requester(params)
-            .then(res => {
-              onRequestFinish(hostname);
+        start: async () => {
+          try {
+            const res = await axios(params);
+            onRequestFinish(hostname);
 
-              if (res.statusCode >= 400) {
-                reject(new ChampionifyErrors.RequestError(res.statusCode, params.url, res.body));
-              } else {
-                resolve(res.body);
-              }
-            })
-            .catch(err => {
-              onRequestFinish(hostname);
-              reject(new ChampionifyErrors.RequestError(err.name, params.url, err));
-            })
+            if (res.status >= 400) {
+              reject(new ChampionifyErrors.RequestError(res.status, params.url, res.data));
+            } else {
+              resolve(res.data);
+            }
+          } catch (err) {
+            onRequestFinish(hostname);
+            reject(new ChampionifyErrors.RequestError(err.name, params.url, err));
+          }
+        }
       });
 
       startAllAllowedRequests();

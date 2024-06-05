@@ -1,4 +1,5 @@
 import Promise from 'bluebird';
+const { exec } = require('child_process');
 import { remote } from 'electron';
 import R from 'ramda';
 import $ from './jquery';
@@ -14,9 +15,6 @@ export * from './request';
 
 const prebuilts = require('../../data/prebuilts.json');
 
-// Windows Specific Dependencies
-let runas;
-if (process.platform === 'win32') runas = require('runas');
 
 /**
  * Function if error exists, enable error view and log error ending the session.
@@ -36,23 +34,23 @@ export function EndSession(c_error) {
  * @returns {Promise.Boolean|ChampionifyErrors.ElevateError}
  */
 export function elevate(params = []) {
-  if (!runas) return Promise.reject(new Error('runas does not work on non windows systems'));
+  if (process.platform !== 'win32') {
+    return Promise.reject(new Error('Elevation is only implemented for Windows'));
+  }
 
   return new Promise((resolve, reject) => {
     const browser_window = remote.getCurrentWindow();
     browser_window.hide();
 
-    const code = runas(process.execPath, ['--runned-as-admin'].concat(params), {
-      hide: false,
-      admin: true
-    });
+    const command = `powershell -Command "Start-Process '${process.execPath}' -ArgumentList '--runned-as-admin ${params.join(' ')}' -Verb RunAs"`;
 
-    if (code !== 0) {
-      browser_window.show();
-      if (code === -1) return reject(new ChampionifyErrors.ElevateError('User refused to elevate permissions'));
-      return reject(new ChampionifyErrors.ElevateError(`runas returned with exit code ${code}`));
-    }
-    remote.app.quit();
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        browser_window.show();
+        return reject(new ChampionifyErrors.ElevateError(`Failed to elevate permissions: ${stderr}`));
+      }
+      remote.app.quit();
+    });
   });
 }
 

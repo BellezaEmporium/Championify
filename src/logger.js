@@ -1,4 +1,3 @@
-import ElectronConsole from 'winston-electron';
 import path from 'path';
 import R from 'ramda';
 import winston from 'winston';
@@ -10,9 +9,9 @@ import preferences from './preferences';
 /**
  * Winston logger
  */
-const Log = new winston.Logger({
+const Log = winston.createLogger({
   transports: [
-    new ElectronConsole({
+    new winston.transports.Console({
       level: process.env.NODE_ENV === 'test' ? 'emerg' : 'debug',
       handleExceptions: true
     }),
@@ -22,9 +21,10 @@ const Log = new winston.Logger({
       handleExceptions: true,
       prettyPrint: true,
       level: process.env.NODE_ENV === 'test' ? 'emerg' : 'debug',
-      options: {flags: 'w'}
+      options: { flags: 'w' }
     })
-  ]
+  ],
+  exitOnError: false,
 });
 
 Log.exitOnError = function(err) {

@@ -3,8 +3,8 @@ import { remote } from 'electron';
 import express from 'express';
 import net from 'net';
 import path from 'path';
-import progress from 'request-progress';
-import request from 'request';
+import axios from 'axios';
+import progress from 'progress-stream';
 import semver from 'semver';
 import tmp from 'tmp';
 
@@ -17,11 +17,11 @@ import viewManager from './view_manager';
 
 const fs = Promise.promisifyAll(require('fs-extra'));
 
-
 /**
  * Downloads update file to disk
- * @param {String} Download URL
- * @param {String} Local path
+ * @param {String} url - Download URL
+ * @param {String} download_path - Local path
+ * @param {Boolean} enable_progress - Enable progress bar
  * @returns {Promise}
  */
 function download(url, download_path, enable_progress = true) {
@@ -30,33 +30,48 @@ function download(url, download_path, enable_progress = true) {
   try {
     file = fs.createWriteStream(download_path);
   } catch (e) {
-    const error = new ChampionifyErrors.UpdateError(`Can\'t write update file: ${path.basename(download_path)}`).causedBy(e);
+    const error = new ChampionifyErrors.UpdateError(`Can't write update file: ${path.basename(download_path)}`).causedBy(e);
     return Promise.reject(error);
   }
 
-  let last_percent = 0;
-  return new Promise((resolve, reject) => {
-    return progress(request(url), {throttle: 500})
-      .on('progress', state => {
-        if (enable_progress && state.percent > last_percent) {
-          last_percent = state.percent;
-          return progressbar.incrUI('update_progress_bar', last_percent);
-        }
-      })
-      .on('error', err => reject(err))
-      .pipe(file)
-      .on('error', err => reject(err))
-      .on('close', () => {
+  return axios({
+    url,
+    method: 'GET',
+    responseType: 'stream',
+  }).then(response => {
+    const totalLength = response.headers['content-length'];
+    const progressStream = progress({
+      length: totalLength,
+      time: 100 /* ms */,
+    });
+
+    let last_percent = 0;
+
+    progressStream.on('progress', state => {
+      if (enable_progress && state.percentage > last_percent) {
+        last_percent = state.percentage;
+        progressbar.incrUI('update_progress_bar', last_percent);
+      }
+    });
+
+    response.data.pipe(progressStream).pipe(file);
+
+    return new Promise((resolve, reject) => {
+      file.on('finish', () => {
         file.close();
         resolve();
       });
-  });
+
+      file.on('error', err => reject(err));
+      progressStream.on('error', err => reject(err));
+    });
+  }).catch(err => Promise.reject(err));
 }
 
 /**
  * Starts express server that Squirrels taps in to.
- * @param {String} Listening port
- * @param {String} Temporary download folder path
+ * @param {String} port - Listening port
+ * @param {String} download_folder - Temporary download folder path
  */
 function startExpress(port, download_folder) {
   const web = express();
@@ -73,9 +88,9 @@ function startExpress(port, download_folder) {
 }
 
 /**
- * Starts Squirrels update process, if sucsessful the promise should never resolve as the app will quit.
- * @param {String} Local express port
- * @param {String} Temporary download folder path
+ * Starts Squirrels update process, if successful the promise should never resolve as the app will quit.
+ * @param {String} port - Local express port
+ * @param {String} download_folder - Temporary download folder path
  * @returns {Promise}
  */
 function startSquirrels(port, download_folder) {
@@ -120,8 +135,8 @@ function getPort() {
 }
 
 /**
- * Starts update process by changing view and queing downloads
- * @param {String} New version number
+ * Starts update process by changing view and queuing downloads
+ * @param {String} version - New version number
  * @returns {Promise}
  */
 function startUpdate(version) {
@@ -131,16 +146,16 @@ function startUpdate(version) {
   const downloads = [];
   if (process.platform === 'darwin') {
     downloads.push(download(
-      `https://github.com/dustinblackman/Championify/releases/download/${version}/Championify-OSX-${version}.zip`,
+      `https://github.com/BellezaEmporium/Championify/releases/download/${version}/Championify-OSX-${version}.zip`,
       path.join(download_folder, 'osx.zip')
     ));
   } else {
     downloads.push(download(
-      `https://github.com/dustinblackman/Championify/releases/download/${version}/Championify-${version}-full.nupkg`,
+      `https://github.com/BellezaEmporium/Championify/releases/download/${version}/Championify-${version}-full.nupkg`,
       path.join(download_folder, `Championify-${version}-full.nupkg`)
     ));
     downloads.push(download(
-      `https://github.com/dustinblackman/Championify/releases/download/${version}/RELEASES`,
+      `https://github.com/BellezaEmporium/Championify/releases/download/${version}/RELEASES`,
       path.join(download_folder, 'RELEASES'),
       false
     ));
@@ -158,11 +173,10 @@ function startUpdate(version) {
  * Checks for updates and begins download process
  * @returns {Promise|Boolean}
  */
-
 export default function update() {
   Log.info('Checking for updates');
   return cRequest({
-    url: 'https://raw.githubusercontent.com/dustinblackman/Championify/master/package.json',
+    url: 'https://raw.githubusercontent.com/BellezaEmporium/Championify/master/package.json',
     json: true
   })
   .then(({version}) => {

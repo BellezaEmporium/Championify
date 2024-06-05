@@ -1,5 +1,5 @@
 import Promise from 'bluebird';
-import moment from 'moment';
+import { DateTime } from 'luxon';
 import R from 'ramda';
 
 import ChampionifyErrors from '../errors';
@@ -8,12 +8,32 @@ import Log from '../logger';
 import progressbar from '../progressbar';
 import store from '../store';
 import T from '../translate';
+import { json } from 'express';
 
 
 export const source_info = {
-  name: 'Lolflavor',
-  id: 'lolflavor'
+  name: 'U.gg',
+  id: 'ugg'
 };
+
+/**
+ * Constants fallbacks.
+ */
+UGG_VERSION = '1.5.0';
+UGG_CONSTANT = '1.5';
+
+function getUggVersion() {
+  // necessary request to get the API version.
+  return request({url: `https://static.bigbrain.gg/assets/lol/riot_patch_update/prod/ugg/ugg-api-versions.json`, json: true})
+    .then(body => {
+      if (!body || !body.versions) throw new ChampionifyErrors.MissingData(`U.gg: Versions`);
+      return body.versions[getVersion()].builds;
+    })
+    .catch(err => {
+      Log.warn(err);
+      return UGG_VERSION;
+    });
+}
 
 
 /**
@@ -24,9 +44,9 @@ export const source_info = {
  */
 
 function _requestAvailableChamps(process_name, stats_file) {
-  return request({url: `http://www.lolflavor.com/data/${stats_file}`, json: true})
+  return request({url: `https://stats2.u.gg/lol/1.5/overview/world/${getVersion()}/ranked_solo_5x5/emerald_plus/1.5.0.json${stats_file}`, json: true})
     .then(body => {
-      if (!body.champions) throw new ChampionifyErrors.MissingData(`Lolflavor: ${process_name}`);
+      if (!body.champions) throw new ChampionifyErrors.MissingData(`U.gg: ${process_name}`);
       return R.pluck('name')(body.champions).sort();
     })
     .catch(err => {
@@ -42,7 +62,7 @@ function _requestAvailableChamps(process_name, stats_file) {
 
 
 /**
- * Function Request ARAM item sets from lolflavor.
+ * Function Request ARAM item sets from u.gg.
  * @param {String} Type of process (ARAM, Jungle, Support, Lane)
  * @param {String} Name of stats file.
  * @returns {Promise}
@@ -50,9 +70,8 @@ function _requestAvailableChamps(process_name, stats_file) {
 
 function _requestData(champs_names, process_name) {
   const title_translations = {
-    core_items: `${T.t('core_items', true)} - ${T.t('max_skill', true)}: `,
-    Consumable: T.t('consumables', true),
-    Starter: T.t('starter', true),
+    core_items: `${T.t('core-items', true)} - ${T.t('winrate', true)}: `,
+    Starter: T.t('starting-items', true),
     'Core Alternatives - Endgame Items ': `${T.t('core_alternatives', true)} - ${T.t('endgame_items', true)}`,
     Boots: T.t('boots', true),
     'Situational Items': T.t('situational_items', true),
@@ -62,16 +81,16 @@ function _requestData(champs_names, process_name) {
 
   return Promise.resolve(champs_names)
     .map(champ => {
-      cl(`${T.t('processing')} Lolflavor ${T.t(process_name)}: ${T.t(champ.replace(/ /g, ''))}`);
+      cl(`${T.t('processing')} U.gg ${T.t(process_name)}: ${T.t(champ.replace(/ /g, ''))}`);
 
       const params = {
-        url: `http://www.lolflavor.com/champions/${champ}/Recommended/${champ}_${process_name.toLowerCase()}_scrape.json`,
+        url: `https://u.gg/lol/champions/${champ}/build/${process_name.toLowerCase()}?rank=overall`,
         json: true
       };
 
       return request(params)
         .then(riot_json => {
-          if (!riot_json.blocks) throw new ChampionifyErrors.MissingData(`Lolflavor: ${champ} ${process_name}`);
+          if (!riot_json.blocks) throw new ChampionifyErrors.MissingData(`U.gg: ${champ} ${process_name}`);
 
           riot_json.blocks = R.map(block => {
             if (block.type.indexOf('Core Items') > -1) {
@@ -91,7 +110,7 @@ function _requestData(champs_names, process_name) {
             riot_json.map = 'HA';
           }
 
-          // If anything other then ARAM (SR, ect)
+          // If anything other then ARAM (SR. Other modes (Arena, URF etc...) are subscription-only on u.gg.)
           if (process_name !== 'ARAM') {
             if (store.get('settings').locksr) riot_json.map = 'SR';
             riot_json.blocks.shift();
@@ -105,7 +124,7 @@ function _requestData(champs_names, process_name) {
             progressbar.incrChamp(5);
           }
 
-          return {champ, file_prefix: process_name.toLowerCase(), riot_json, source: 'lolflavor'};
+          return {champ, file_prefix: process_name.toLowerCase(), riot_json, source: 'ugg'};
         })
         .catch(err => {
           Log.warn(err);
@@ -129,7 +148,7 @@ function _requestData(champs_names, process_name) {
  * @returns {Promise.<Array|ChampionifyErrors>} Array of objects with parsed item sets data.
  */
 
-function _processLolflavor(process_name, stats_file) {
+function _processUgg(process_name, stats_file) {
   Log.info(`Downloading ${process_name} Champs`);
   return _requestAvailableChamps(process_name, stats_file)
     .then(champs => _requestData(champs, process_name));
@@ -162,23 +181,23 @@ export function getSr() {
   ];
 
   return Promise.resolve(stats_pages)
-    .map(data => _processLolflavor(data.name, data.file))
+    .map(data => _processUgg(data.name, data.file))
     .then(R.flatten)
     .then(data => store.push('sr_itemsets', data));
 }
 
 
 /**
- * Function Get current Lolflavor version
- * @returns {Promise.<String|Champion>} Lolflavor version
+ * Function Get current u.gg version
+ * @returns {Promise.<String|Champion>} u.gg version
  */
 
 export function getVersion() {
-  return request({url: 'http://www.lolflavor.com/champions/Ahri/Recommended/Ahri_mid_scrape.json', json: true})
-    .then(body => {
-      if (!body || !body.title) return T.t('unknown');
-      const version = moment(body.title.split(' ')[3]).format('YYYY-MM-DD');
-      store.set('lolflavor_ver', version);
+  return request({url: 'https://static.bigbrain.gg/assets/lol/riot_patch_update/prod/ugg/patches.json', json: true})
+    .then(response => {
+      if (!response) return T.t('unknown');
+      const version = response[0];
+      store.set('ugg_ver', version);
       return version;
     })
     .catch(err => {
