@@ -17,3 +17,4 @@ test.coffee
 test.sh
 
 out/
+dist/
