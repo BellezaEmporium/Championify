@@ -1,7 +1,6 @@
-import axios from 'axios';
-import retry from 'async-retry';
-import R from 'ramda';
-import ChampionifyErrors from '../errors';
+import axios from 'axios'
+import retry from 'async-retry'
+import ChampionifyErrors from '../errors.js'
 
 /**
  * Request retry configuration
@@ -12,7 +11,7 @@ const retry_options = {
   minTimeout: 1000,
   factor: 2,
   maxTimeout: 30000
-};
+}
 
 /**
  * Limits for concurrent connections
@@ -22,55 +21,55 @@ const retry_options = {
 const connection_limits = {
   max_concurrent: 17,
   max_concurrent_per_host: 6
-};
+}
 
 /**
  * Counter for currently running requests
  * @type {{total: number, per_host: {}}}
  */
-let active_connections = {
+const active_connections = {
   total: 0,
   per_host: {}
-};
+}
 
 /**
  * List for pending requests that have not been started yet
  * @type {Array}
  */
-let waiting_tasks = [];
+const waiting_tasks = []
 
 /**
  * Checks if a request to the given hostname can be started
  * @param {String} hostname
  * @returns {boolean}
  */
-function canStartRequest(hostname) {
+function canStartRequest (hostname) {
   return active_connections.total < connection_limits.max_concurrent &&
-      (active_connections.per_host[hostname] || 0) < connection_limits.max_concurrent_per_host;
+      (active_connections.per_host[hostname] || 0) < connection_limits.max_concurrent_per_host
 }
 
 /**
  * Updates the request counter for the given hostname on request start
  * @param {String} hostname
  */
-function onRequestStart(hostname) {
-  active_connections.total++;
-  active_connections.per_host[hostname] = (active_connections.per_host[hostname] || 0) + 1;
+function onRequestStart (hostname) {
+  active_connections.total++
+  active_connections.per_host[hostname] = (active_connections.per_host[hostname] || 0) + 1
 }
 
 /**
  * Starts all requests that do not exceed request limits
  * This method is invoked whenever a new request has been queued or a running request finished
  */
-function startAllAllowedRequests() {
+function startAllAllowedRequests () {
   for (let i = 0; i < waiting_tasks.length; i++) {
     if (canStartRequest(waiting_tasks[i].hostname)) {
-      onRequestStart(waiting_tasks[i].hostname);
-      waiting_tasks[i].start();
+      onRequestStart(waiting_tasks[i].hostname)
+      waiting_tasks[i].start()
 
       // remove request from waiting requests list and update loop index
-      waiting_tasks.splice(i, 1);
-      i--;
+      waiting_tasks.splice(i, 1)
+      i--
     }
   }
 }
@@ -80,15 +79,15 @@ function startAllAllowedRequests() {
  * This method also invokes startAllAllowedRequests() after updating request counters
  * @param {String} hostname
  */
-function onRequestFinish(hostname) {
-  active_connections.total--;
-  active_connections.per_host[hostname]--;
+function onRequestFinish (hostname) {
+  active_connections.total--
+  active_connections.per_host[hostname]--
 
   if (active_connections.per_host[hostname] === 0) {
-    delete active_connections.per_host[hostname];
+    delete active_connections.per_host[hostname]
   }
 
-  startAllAllowedRequests();
+  startAllAllowedRequests()
 }
 
 /**
@@ -96,9 +95,9 @@ function onRequestFinish(hostname) {
  * @param {String} url
  * @returns {String} Hostname
  */
-function getHostnameFromUrl(url) {
-  const parts = url.match(/^(\w+:(\/\/)?)?([^:\/?#]*).*$/);
-  return parts ? parts[3] : '';
+function getHostnameFromUrl (url) {
+  const parts = url.match(/^(\w+:(\/\/)?)?([^:\/?#]*).*$/)
+  return parts ? parts[3] : ''
 }
 
 /**
@@ -106,39 +105,39 @@ function getHostnameFromUrl(url) {
  * @param {Object/String} options
  * @returns {Promise.<Object|ChampionifyErrors.RequestError>} Request body
  */
-export function request(options) {
-  let params = {timeout: 10000};
+export function request (options) {
+  let params = { timeout: 10000 }
 
-  if (R.is(String, options)) {
-    params.url = options;
+  if (typeof options === 'string') {
+    params.url = options
   } else {
-    params = R.merge(params, options);
+    params = { ...params, ...options }
   }
 
-  const hostname = getHostnameFromUrl(params.url);
+  const hostname = getHostnameFromUrl(params.url)
 
   return retry(async () => {
     return new Promise((resolve, reject) => {
       waiting_tasks.push({
-        hostname: hostname,
+        hostname,
         start: async () => {
           try {
-            const res = await axios(params);
-            onRequestFinish(hostname);
+            const res = await axios(params)
+            onRequestFinish(hostname)
 
             if (res.status >= 400) {
-              reject(new ChampionifyErrors.RequestError(res.status, params.url, res.data));
+              reject(new ChampionifyErrors.RequestError(res.status, params.url, res.data))
             } else {
-              resolve(res.data);
+              resolve(res.data)
             }
           } catch (err) {
-            onRequestFinish(hostname);
-            reject(new ChampionifyErrors.RequestError(err.name, params.url, err));
+            onRequestFinish(hostname)
+            reject(new ChampionifyErrors.RequestError(err.name, params.url, err))
           }
         }
-      });
+      })
 
-      startAllAllowedRequests();
-    });
-  }, retry_options);
+      startAllAllowedRequests()
+    })
+  }, retry_options)
 }

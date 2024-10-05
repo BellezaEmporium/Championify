@@ -4,7 +4,6 @@ import { signAsync as macSignAsync } from 'electron-osx-sign';
 import moment from 'moment';
 import path from 'path';
 import plist from 'plist';
-import R from 'ramda';
 import runSequence from 'run-sequence';
 import { execAsync, spawnAsync } from './helpers';
 
@@ -13,10 +12,9 @@ if (process.platform === 'darwin') appdmg = require('appdmg');
 const asar = Promise.promisifyAll(require('asar'));
 const fs = Promise.promisifyAll(require('fs-extra'));
 const rcedit = Promise.promisify(require('rcedit'));
-const winstaller = require('electron-winstaller');
-const pkg = require('../package.json');
+import winstaller from "electron-winstaller";
+import pkg from "../package.json" with { type: "json" };
 const electron_version = pkg.devDependencies['electron'];
-
 
 function copyright() {
   return `Copyright (C) ${moment().format('YYYY')} ${pkg.author}. All rights reserved`;
@@ -86,7 +84,7 @@ gulp.task('_compileMac', function(cb) {
       if (!process.env.SIGN_OSX_IDENTITY) return console.log('WARNING: OSX app not signed');
       return macSignAsync({app: tmp_path})
         .catch(err => {
-          if (!R.contains('release', process.argv)) return console.log('WARNING: OSX app not signed');
+          if (!process.argv.includes('release')) return console.log('WARNING: OSX app not signed');
           throw err;
         });
     })
@@ -123,7 +121,7 @@ gulp.task('_createdmg', function(cb) {
   });
   ee.on('error', err => cb(err));
   ee.on('finish', () => {
-    if (R.contains('release', process.argv) && !process.env.SIGN_OSX_IDENTITY) cb(new Error('SIGN_OSX_IDENTITY env does not exist'));
+    if (process.argv.includes('release') && !process.env.SIGN_OSX_IDENTITY) cb(new Error('SIGN_OSX_IDENTITY env does not exist'));
     spawnAsync('codesign', ['-s', process.env.SIGN_OSX_IDENTITY, target]).asCallback(cb);
   });
 });

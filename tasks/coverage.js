@@ -1,94 +1,91 @@
-import Promise from 'bluebird';
-import aws from 'aws-sdk';
-import { execAsync } from './helpers';
-import glob from 'glob';
-import gulp from 'gulp';
-import moment from 'moment';
-import open from 'open';
-import path from 'path';
-import R from 'ramda';
-import SuperError from 'super-error';
+import Promise from 'bluebird'
+import aws from 'aws-sdk'
+import { execAsync } from './helpers'
+import { glob } from 'glob'
+import gulp from 'gulp'
+import moment from 'moment'
+import open from 'open'
+import path from 'path'
+import SuperError from 'super-error'
 
-const fs = Promise.promisifyAll(require('fs-extra'));
-const request = Promise.promisify(require('request'));
+const fs = Promise.promisifyAll(require('fs-extra'))
+const request = Promise.promisify(require('request'))
 
-const SkipCoverallsError = SuperError.subclass('SkipCoverallsError');
+const SkipCoverallsError = SuperError.subclass('SkipCoverallsError')
 
 aws.config.update({
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-});
+})
 
 const s3 = Promise.promisifyAll(new aws.S3({
-  params: {Bucket: 'dustinblackman-championify-coverage'}
-}));
+  params: { Bucket: 'dustinblackman-championify-coverage' }
+}))
 
-
-function _istanbul(report_type) {
-  return execAsync(`${path.resolve('./node_modules/.bin/babel-istanbul')} report ${report_type}`);
+function _istanbul (report_type) {
+  return execAsync(`${path.resolve('./node_modules/.bin/babel-istanbul')} report ${report_type}`)
 }
 
-function uploadCoverage() {
-  let commit = process.env.APPVEYOR_REPO_COMMIT;
-  let filename = 'appveyor.json';
+function uploadCoverage () {
+  let commit = process.env.APPVEYOR_REPO_COMMIT
+  let filename = 'appveyor.json'
   if (process.env.TRAVIS_COMMIT) {
-    commit = process.env.TRAVIS_COMMIT;
-    filename = 'travis.json';
+    commit = process.env.TRAVIS_COMMIT
+    filename = 'travis.json'
   }
 
-  console.log(`Uploading ${commit}/${filename}`);
+  console.log(`Uploading ${commit}/${filename}`)
   return s3.uploadAsync({
     Key: `${commit}/${filename}`,
     Body: fs.readFileSync(path.join(__dirname, '..', 'coverage/coverage.json'))
-  });
+  })
 }
 
-function getCoverage() {
-  const commit = process.env.APPVEYOR_REPO_COMMIT || process.env.TRAVIS_COMMIT;
-  fs.removeSync(path.join(__dirname, `../coverage/coverage.json`));
+function getCoverage () {
+  const commit = process.env.APPVEYOR_REPO_COMMIT || process.env.TRAVIS_COMMIT
+  fs.removeSync(path.join(__dirname, '../coverage/coverage.json'))
 
-  return s3.listObjectsAsync({Prefix: commit})
+  return s3.listObjectsAsync({ Prefix: commit })
     .then(data => {
-      if (data.Contents.length < 2) throw new Error('Missing second coverage file, skipping');
+      if (data.Contents.length < 2) throw new Error('Missing second coverage file, skipping')
       return Promise.map(data.Contents, entry => {
-        return s3.getObjectAsync({Key: entry.Key})
-          .then(R.prop('Body'))
-          .then(R.toString)
+        return s3.getObjectAsync({ Key: entry.Key })
+          .then(res => res.Body.toString())
           .then(JSON.parse)
-          .then(data => ({data, filename: path.basename(entry.Key)}));
-      });
+          .then(data => ({ data, filename: path.basename(entry.Key) }))
+      })
     })
     .each(entry => {
-      const converted_coverage = {};
-      R.forEach(coverage_data => {
-        let file = coverage_data.path.split('src')[1].replace(/\\/g, '/');
-        if (file[0] === '/') file = file.substring(1);
-        coverage_data.path = path.join(__dirname, '..', 'src', file);
-        converted_coverage[coverage_data.path] = coverage_data;
-      }, R.values(entry.data));
+      const converted_coverage = {}
+      Object.values(entry.data).forEach(coverage_data => {
+        let file = coverage_data.path.split('src')[1].replace(/\\/g, '/')
+        if (file[0] === '/') file = file.substring(1)
+        coverage_data.path = path.join(__dirname, '..', 'src', file)
+        converted_coverage[coverage_data.path] = coverage_data
+      })
 
-      return fs.writeFileAsync(path.join(__dirname, `../coverage/coverage-${entry.filename}`), JSON.stringify(converted_coverage), 'utf8');
+      return fs.writeFileAsync(path.join(__dirname, `../coverage/coverage-${entry.filename}`), JSON.stringify(converted_coverage), 'utf8')
     })
-    .then(() => s3.deleteObjectsAsync({Delete: {Objects: [{Key: commit}]}}));
+    .then(() => s3.deleteObjectsAsync({ Delete: { Objects: [{ Key: commit }] } }))
 }
 
-function checkIfSubmitted() {
-  const commit = process.env.APPVEYOR_REPO_COMMIT || process.env.TRAVIS_COMMIT;
+function checkIfSubmitted () {
+  const commit = process.env.APPVEYOR_REPO_COMMIT || process.env.TRAVIS_COMMIT
   return request(`https://coveralls.io/builds/${commit}.json`)
     .then(res => {
-      if (res.statusCode === 200) throw new SkipCoverallsError('Commit already on Coveralls');
-    });
+      if (res.statusCode === 200) throw new SkipCoverallsError('Commit already on Coveralls')
+    })
 }
 
 // TODO: Stop executing command line, tap in to coveralls source instead.
-function runCoveralls() {
-  console.log(`Processing coverage files: ${glob.sync(path.join(__dirname, '../coverage/*.json'))}`);
+function runCoveralls () {
+  console.log(`Processing coverage files: ${glob.sync(path.join(__dirname, '../coverage/*.json'))}`)
 
   // If Travis
   if (process.env.TRAVIS) {
-    const cmd = 'cat ./coverage/lcov.info | ./node_modules/.bin/coveralls';
+    const cmd = 'cat ./coverage/lcov.info | ./node_modules/.bin/coveralls'
     return fs.writeFileAsync('./coveralls.sh', cmd, 'utf8')
-      .then(() => execAsync('bash ./coveralls.sh'));
+      .then(() => execAsync('bash ./coveralls.sh'))
   }
 
   // If Appveyor
@@ -98,25 +95,25 @@ function runCoveralls() {
     `SET COVERALLS_GIT_BRANCH=${process.env.APPVEYOR_REPO_BRANCH}`,
     `SET COVERALLS_GIT_COMMIT=${process.env.APPVEYOR_REPO_COMMIT}`,
     'type .\\coverage\\lcov.info | .\\node_modules\\.bin\\coveralls'
-  ];
+  ]
 
   return fs.writeFileAsync('./coveralls.bat', cmds.join('\n'), 'utf8')
-   .then(() => execAsync('.\\coveralls.bat'));
+    .then(() => execAsync('.\\coveralls.bat'))
 }
 
-gulp.task('istanbul-coverage', function() {
-  return _istanbul('text-summary');
-});
+gulp.task('istanbul-coverage', function () {
+  return _istanbul('text-summary')
+})
 
-gulp.task('istanbul-instrument', function() {
-  return execAsync(`${path.resolve('./node_modules/.bin/babel-istanbul')} instrument -o src-cov src`);
-});
+gulp.task('istanbul-instrument', function () {
+  return execAsync(`${path.resolve('./node_modules/.bin/babel-istanbul')} instrument -o src-cov src`)
+})
 
-gulp.task('istanbul-cleanup', function() {
-  return fs.removeAsync('./src-cov');
-});
+gulp.task('istanbul-cleanup', function () {
+  return fs.removeAsync('./src-cov')
+})
 
-gulp.task('coveralls', function() {
+gulp.task('coveralls', function () {
   // TODO: Check if a check is needed to disable during PRs
   return checkIfSubmitted()
     .then(uploadCoverage)
@@ -124,11 +121,11 @@ gulp.task('coveralls', function() {
     .then(() => _istanbul('lcov text-summary'))
     .then(runCoveralls)
     .catch(err => {
-      console.log(err.stack || err);
-    });
-});
+      console.log(err.stack || err)
+    })
+})
 
-gulp.task('coverage', function(done) {
-  open(path.resolve(path.join(__dirname, '../coverage/lcov-report/index.html')));
-  return done();
-});
+gulp.task('coverage', function (done) {
+  open(path.resolve(path.join(__dirname, '../coverage/lcov-report/index.html')))
+  return done()
+})

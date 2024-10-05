@@ -1,0 +1,115 @@
+$ const Modals = require('./_modals.marko');
+
+<Modals input=input />
+
+<div class="one column row optionsrow">
+  <div class="column">
+    <div class="browse_title"><span>${input.browse_title}</span></div>
+    <div class="ui fluid action input lol_dir_input">
+      <input id="install_path" type="text"/>
+      <button id="browse" type="button" class="ui grey button">$!{input.T.t('browse')}</button>
+    </div>
+    <br/>
+    <div class="lol_dir_input_msg"><span id="input_msg"></span></div>
+  </div>
+</div>
+
+<div class="one column row optionsrow">
+  <div class="column options">
+    <div class="rift_source">
+      <div class="ui fluid multiple search selection dropdown">
+        <input id="options_sr_source" type="hidden" value="${input.selected_sources}"/><i class="dropdown icon"></i>
+        <div class="default text">$!{input.T.t('summoners_rift_source')}</div>
+        <div class="menu">
+            <for|source| of=input.sources>
+            <div input-value="${source.id}" class="item">
+              <img alt="LoL scraping source logo" src="img/sources/${source.id}.png" class="sourceicon"/>${source.name}
+            </div>
+          </for>
+        </div>
+      </div>
+    </div>
+    <div class="ui checkbox left">
+      <input id="options_aram" type="checkbox"/>
+      <label input-content="$!{input.T.t('options_aram_tooltip')}" class="options_tooltip">$!{input.T.t('options_aram_tooltip')}</label>
+    </div><br/>
+    <div class="ui checkbox left">
+      <input id="options_splititems" type="checkbox"/>
+      <label input-content="$!{input.T.t('options_splititems_tooltip')}" class="options_tooltip">$!{input.T.t('options_splititems')}</label>
+    </div><br/>
+    <div class="ui checkbox left">
+      <input id="options_skillsformat" type="checkbox"/>
+      <label input-content="$!{input.T.t('options_skillsformat_tooltip')} Q.W.E.Q.W.R.Q.W.Q.W etc." class="options_tooltip">$!{input.T.t('options_skillsformat')} (Q>W>E)</label>
+    </div><br/>
+    <div class="with_dropdown">
+      <div class="ui checkbox left">
+        <input id="options_consumables" type="checkbox" checked=""/>
+        <label input-content="$!{input.T.t('options_consumables_tooltip')}" class="options_tooltip">$!{input.T.t('options_consumables')}</label>
+      </div>
+      <div class="ui icon bottom right pointing dropdown button"><i class="small wrench icon"></i>
+        <div id="options_consumables_position" class="menu">
+          <div class="header"><i class="resize vertical icon"></i>$!{input.T.t('select_position')}</div>
+          <div class="divider"></div>
+          <div class="item beginning">$!{input.T.t('beginning')}</div>
+          <div class="item end">$!{input.T.t('end')}</div>
+        </div>
+      </div>
+    </div>
+    <div class="with_dropdown">
+      <div class="ui checkbox left">
+        <input id="options_trinkets" type="checkbox" checked=""/>
+        <label input-content="$!{input.T.t('options_trinkets_tooltip')}" class="options_tooltip">$!{input.T.t('options_trinkets')}</label>
+      </div>
+      <div class="ui icon bottom right pointing dropdown button"><i class="small wrench icon"></i>
+        <div id="options_trinkets_position" class="menu">
+          <div class="header"><i class="resize vertical icon"></i>$!{input.T.t('select_position')}</div>
+          <div class="divider"></div>
+          <div class="item beginning">$!{input.T.t('beginning')}</div>
+          <div class="item end">$!{input.T.t('end')}</div>
+        </div>
+      </div>
+    </div>
+    <div class="ui checkbox left">
+      <input id="options_locksr" type="checkbox"/>
+      <label input-content="$!{input.T.t('options_locksr_tooltip')}" class="options_tooltip">$!{input.T.t('options_locksr')}</label>
+    </div><br/>
+    <div class="ui checkbox left">
+      <input id="options_dontdeleteold" type="checkbox"/>
+      <label input-content="$!{input.T.t('options_dontdeleteold_tooltip')}" class="options_tooltip">$!{input.T.t('options_dontdeleteold')}</label>
+    </div>
+  </div>
+</div>
+
+<div class="one column row">
+  <div id="btns_versions">
+    <div class="submit_btns">
+      <div class="ui divider"></div>
+      <button id="import_btn" class="ui green button">$!{input.T.t('import')}</button>
+      <button id="delete_btn" class="ui red button">$!{input.T.t('delete')}</button>
+    </div><br/>
+    <div class="versions">
+      <div>$!{input.T.t('local_items_version')}:<span id="local_version">$!{input.T.t('unknown')}</span></div>
+      <div>LoL $!{input.T.t('version')}:<span id="lol_version">$!{input.T.t('loading')}</span></div>
+      <for|source| in=input.sources>
+        <div>
+          ${source.name} $!{input.T.t('version')}:<span id="${source.id}_version">$!{input.T.t('loading')}</span>
+        </div>
+      </for>
+    </div>
+  </div>
+  <div id="process_log" class="hidden">
+    <div class="status">
+      <div class="ui horizontal divider">
+        <h2>$!{input.T.t('status')}</h2>
+      </div>
+      <div id="itemsets_progress_bar" input-percent="0" class="ui indicating progress">
+        <div style="transition-duration: 300ms; -webkit-transition-duration: 300ms;" class="bar">
+          <div class="progress">0%</div>
+        </div>
+      </div>
+    </div>
+    <div class="progresslog">
+      <div id="cl_progress"></div>
+    </div>
+  </div>
+</div>

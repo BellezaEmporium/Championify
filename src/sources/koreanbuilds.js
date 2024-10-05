@@ -1,7 +1,6 @@
 import Promise from 'bluebird';
 import cheerio from 'cheerio';
-import didyoumean from 'didyoumean';
-import R from 'ramda';
+import didyoumean from 'didyoumean2';
 
 import { arrayToBuilds, cl, request, shorthandSkills, trinksCon } from '../helpers';
 import Log from '../logger';
@@ -9,15 +8,13 @@ import progressbar from '../progressbar';
 import store from '../store';
 import T from '../translate';
 
-const default_schema = require('../../data/default.json');
-const prebuilts = require('../../data/prebuilts.json');
-
+import default_schema from "../../data/default.json"  with { type: "json" };
+import prebuilts from "../../data/prebuilts.json"  with { type: "json" };
 
 export const source_info = {
   name: 'KoreanBuilds',
   id: 'koreanbuilds'
 };
-
 
 export function getVersion() {
   return request('http://koreanbuilds.net/')
@@ -32,15 +29,14 @@ export function getSr() {
   return request('http://koreanbuilds.net/')
     .then(cheerio.load)
     .then($c => {
-      // TODO: Fix scrolling in undefined builds before enabling this again.
-      // $c('div[class="champIcon grey"]')
-      //   .each((idx, elem) => {
-      //     store.push('undefined_builds', {
-      //       source: source_info.name,
-      //       champ: $c(elem).attr('name').toLowerCase().replace(/[^a-z]/g, ''),
-      //       position: 'All'
-      //     });
-      //   });
+      $c('div[class="champIcon grey"]')
+        .each((idx, elem) => {
+          store.push('undefined_builds', {
+            source: source_info.name,
+            champ: $c(elem).attr('name').toLowerCase().replace(/[^a-z]/g, ''),
+            position: 'All'
+          });
+        });
 
       return $c('.champIcon')
         .map((idx, elem) => {
@@ -55,7 +51,7 @@ export function getSr() {
         })
         .get();
     })
-    .filter(R.identity)
+    .filter(Boolean)
     .tap(() => Log.info('koreanbuilds: Getting Roles'))
     .map(champ_data => request(`http://koreanbuilds.net/roles?championid=${champ_data.id}`)
       .then(cheerio.load)
@@ -67,7 +63,7 @@ export function getSr() {
         return champ_data;
       })
     , {concurrency: 3})
-    .then(R.reverse)
+    .then(champ_data_list => champ_data_list.reverse())
     .map(champ_data => {
       cl(`${T.t('processing')} Koreanbuilds: ${T.t(champ_data.formatted_name.toLowerCase().replace(/[^a-z]/g, ''))}`);
       progressbar.incrChamp();
@@ -79,12 +75,12 @@ export function getSr() {
             // Item sets
             function getItems(idx) {
               return $c('#items').find('.float').eq(idx).find('.item')
-               .map((idx, elem) => $c(elem).children().attr('src').match(/([^\/]+)(?=\.\w+$)/)[0])
-               .get();
+                .map((idx, elem) => $c(elem).children().attr('src').match(/([^\/]+)(?=\.\w+$)/)[0])
+                .get();
             }
 
             const items = getItems(0);
-            const early_items = R.concat(R.pluck('id', prebuilts.trinkets), getItems(1));
+            const early_items = [...prebuilts.trinkets.map(t => t.id), ...getItems(1)];
 
             // Skills
             let skills = [];
@@ -123,11 +119,12 @@ export function getSr() {
               }
             ];
 
-            const riot_json = R.merge(R.clone(default_schema, true), {
+            const riot_json = {
+              ...JSON.parse(JSON.stringify(default_schema)),
               champion: champ_data.formatted_name,
               title: `KRB ${role} ${store.get('koreanbuilds_ver')}`,
               blocks: trinksCon(block, {highest_win: skills, most_freq: skills})
-            });
+            };
 
             return {
               champ: champ_data.formatted_name,
@@ -142,7 +139,7 @@ export function getSr() {
           store.push('undefined_builds', {champ: champ_data.formatted_name, position: champ_data.roles, source: source_info.name});
         });
     }, {concurrency: 3})
-    .then(R.flatten)
-    .then(R.reject(R.isNil))
+    .then(data => data.flat())
+    .then(data => data.filter(item => item !== null))
     .then(data => store.push('sr_itemsets', data));
 }

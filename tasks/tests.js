@@ -9,7 +9,7 @@ import { spawn } from 'child_process';
 import stylint from 'gulp-stylint';
 
 const fs = Promise.promisifyAll(require('fs-extra'));
-const pkg = require('../package.json');
+import pkg from "../package.json" with { type: "json" };
 
 
 gulp.task('eslint', function() {

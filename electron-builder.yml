@@ -1,0 +1,17 @@
+appId: com.bellezaemporium.championify
+productName: Championify
+directories:
+  output: dist
+  buildResources: resources
+files:
+  - "**/*"
+  - "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}"
+  - "!.electron-builder.yml"
+  - "!{.eslintrc.js,.git,.github,.gitignore,.idea,docs,node_modules,src}"
+  - "resources/**/*"
+win:
+  target: 
+    - nsis
+    - squirrel
+squirrelWindows:
+  artifactName: ${productName} Setup ${version}.${ext}

@@ -22,6 +22,7 @@ There's also [Championify for Android](https://github.com/OmerValentine/Champion
 ---
 
 ## Features
+
 - Summoners Rift and ARAM Item Sets
 - 7 Sources (U.gg (WIP), Leagueofgraphs (WIP), KoreanBuilds, op.gg, Probuilds, and Lolmasters)
 - Skill Priorities lists (Q.W.E.Q.E.R) or Q>E>W
@@ -32,22 +33,26 @@ There's also [Championify for Android](https://github.com/OmerValentine/Champion
 - Garena support
 - Does not touch other item sets that you or other applications create
 
-
 ## Downloads
+
 Found [here](https://github.com/dustinblackman/Championify/releases/latest)
 
 ## [Change Log](CHANGELOG.md)
 
 ## Idea/Suggestions
+
 I'm completely open to new ideas and suggestions! Put up an [Issue](https://github.com/BellezaEmporium/Championify/issues) if you think something is worth having on the program !
 
 ## Contribute
+
 Please see [CONTRIBUTING.md](./.github/CONTRIBUTING.md)
 
 ## [FAQ](FAQ.md)
+
 See [FAQ.md](FAQ.md)
 
 ## Command Line Parameters
+
 Championify supports a few command line parameters for those who would like to automate a few tasks before it's official supported within the app. Params work on both Windows and OSX, and uses the last saved preferences made on the app (preferences are saved each time you hit import). The command line prefs do need improvement and can be tracked [here](https://github.com/dustinblackman/Championify/issues/165).
 
 __Params__
@@ -67,20 +72,20 @@ generates the main `championify.exe`, `--processStartArgs` must be used before a
 C:\Users\YOURNAME\AppData\Local\Championify\championify.exe --processStartArgs --autorun --start-league
 ```
 
-<a name="source" />
-
 ## Build From Source
 
-*THIS IS CURRENTLY NOT COMPILABLE, AS I'M REFACTORING THE WHOLE PROCESS.*
+_THIS IS CURRENTLY NOT COMPILABLE, AS I'M REFACTORING THE WHOLE PROCESS._
 You must have Node 18 and npm 9 installed on your system (thats what Electron is using), git clone the repo and run the following in the root folder.
 
 __OSX:__
+
 ```bash
 npm i
 npm run build
 ```
 
 __Windows:__
+
 ```bash
 npm i --arch=ia32
 npm run build
@@ -89,19 +94,17 @@ npm run build
 You'll find a Championify.exe/Championify.app in the releases folder.
 
 Wine is required if building on Mac for Windows.
+
 ```bash
 brew install wine
 ```
-
-## [Donate to the original creator](https://patreon.com/dustinblackman)
-
-While the original Championify project is on hiatus, due to the original creator of the program being on other horizons, I, as a forker, still deem useful to give credit where it's due. Without the awesome community work on this program, it simply wouldn't exist. [Give him kudos here.](https://patreon.com/dustinblackman) (to learn how to do one time donations with Patreon, see [here](https://patreon.zendesk.com/hc/en-us/articles/204606215-Can-I-make-a-one-time-payment-)).
 
 ## Backers
 
 See [BACKERS.md](BACKERS.md)
 
 ## Credits
+
 - [The Node.js community](https://nodejs.org/) and all the library creators for their awesome programs.
 - [Dustin Blackman](https://github.com/DustinBlackman) for this program.
 - Icon by [Omer Levy](http://github.com/OmerValentine)
@@ -115,9 +118,9 @@ See [BACKERS.md](BACKERS.md)
 - [Lolmasters](http://lolmasters.net/)
 
 ## Thank yous
+
 - [@sargonas](https://github.com/sargonas) and the rest of the Riot API team for unlocking item sets
 - All the wonderful people on Dustin's [Transifex team](https://www.transifex.com/dustinblackman/championify/) (all 180 of you) for helping translate Championify!
-
 
 ## [License](LICENSE)
 

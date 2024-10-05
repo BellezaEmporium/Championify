@@ -1,100 +1,94 @@
-import fs from 'fs';
-import glob from 'glob';
-import { load as markoLoad } from 'marko';
-import path from 'path';
-import R from 'ramda';
-import $ from './helpers/jquery';
+import championify from './championify.js'
+import { spliceVersion } from './helpers/index.js'
+import Log from './logger.js'
+import preferences from './preferences.js'
+import sources, { sources_info } from './sources/index.js'
+import store from './store.js'
+import T from './translate.js'
 
-import championify from './championify';
-import { spliceVersion } from './helpers';
-import Log from './logger';
-import preferences from './preferences';
-import sources, { sources_info } from './sources';
-import store from './store';
-import T from './translate';
+// Import compiled Marko components
+const templates = {
+  indexTemplate: require('./components/index.marko'),
+  mainTemplate: require('./components/main.marko'),
+  completeTemplate: require('./components/complete.marko'),
+  errorTemplate: require('./components/error.marko'),
+  updateTemplate: require('./components/update.marko'),
+  manualUpdateTemplate: require('./components/manual_update.marko')
+}
 
-const pkg = require('../package.json');
-
-// Marko template renders
-const pre_rendered = fs.existsSync(path.join(__dirname, '../views/index.marko.js'));
-require('marko/compiler').defaultOptions.writeToDisk = !pre_rendered;
-require('marko/compiler').defaultOptions.assumeUpToDate = pre_rendered;
-const marko = R.fromPairs(R.map(file_path => {
-  return [path.basename(file_path, '.marko'), markoLoad(file_path)];
-}, glob.sync(path.join(__dirname, '../views/*.marko'))));
-
+// Use dynamic import for package.json
+let pkg
+import('../package.json').then(module => {
+  pkg = module
+})
 
 /**
  * Helper to grab the selected sources if any.
  */
-
-function _selectedSources() {
-  const prefs = preferences.load();
-  return prefs && prefs.options && prefs.options.sr_source ? R.join(',', R.filter(R.identity, prefs.options.sr_source)) : '';
+function _selectedSources () {
+  const prefs = preferences.load()
+  return prefs && prefs.options && prefs.options.sr_source ? prefs.options.sr_source.filter(Boolean).join(',') : ''
 }
 
-function _setBrowseTitle() {
+function _setBrowseTitle () {
   if (process.platform === 'darwin') {
-    store.set('browse_title', `${T.t('select')} League of Legends.app`);
+    store.set('browse_title', `${T.t('select')} League of Legends.app`)
   } else {
-    store.set('browse_title', `${T.t('select')} League of Legends ${T.t('directory')}`);
+    store.set('browse_title', `${T.t('select')} League of Legends ${T.t('directory')}`)
   }
 }
 
-
 /**
  * Change all views with the same transitions.
- * @param {String} Name of view
- * @param {Object} Options to be passed to Jade render
- * @param {Function} [nub] Function to load before view
+ * @param {Function} template Marko template function
+ * @param {Object} options Options to be passed to Marko render
+ * @param {Function} [next] Function to load before view
  */
-
-function _viewChanger(view, options = {}, next) {
-  _setBrowseTitle();
+function _viewChanger (template, options = {}, next) {
+  _setBrowseTitle()
   const default_options = {
     transition: 'browse',
     div_id: 'view',
-    render: {T, browse_title: store.get('browse_title')}
-  };
+    render: { T, browse_title: store.get('browse_title') }
+  }
 
   options = Object.assign(
     {},
     default_options,
     options,
-    {render: R.merge(default_options.render, options.render || {})}
-  );
-  return $(`#${options.div_id}`).transition({
-    animation: 'fade up',
-    onComplete: function() {
-      const html = marko[view].renderSync(options.render);
-      $(`#${options.div_id}`).html(html).promise().then(() => {
-        if (next) next();
-        $(`#${options.div_id}`).transition(options.transition);
-      });
-    }
-  });
+    { render: { ...default_options.render, ...(options.render || {}) } }
+  )
+
+  const viewElement = document.getElementById(options.div_id)
+  viewElement.classList.add('fade-up')
+  viewElement.addEventListener('animationend', function onAnimationEnd () {
+    viewElement.removeEventListener('animationend', onAnimationEnd)
+    const html = template.renderSync(options.render)
+    viewElement.innerHTML = html
+    if (next) next()
+    viewElement.classList.add(options.transition)
+  })
 }
 
 /**
  * Sets initial view with settings
  */
+function _initSettings () {
+  document.getElementById('locale_flag').className = `${T.flag()} flag`
+  document.getElementById('select_language_text').textContent = T.t('select_language')
+  document.querySelector(`#locals_select .item[data-value='${T.locale}']`).classList.add('active')
+  document.getElementById('footer_help').textContent = T.t('help')
+  document.querySelectorAll('.ui.popup.top.left.transition.visible').forEach(el => el.remove())
+  document.querySelectorAll('.options_tooltip').forEach(el => el.popup())
+  document.querySelectorAll('.ui.dropdown').forEach(el => el.dropdown())
 
-function _initSettings() {
-  $('#locale_flag').attr('class', `${T.flag()} flag`);
-  $('#select_language_text').text(T.t('select_language'));
-  $('#locals_select').find(`.item[data-value='${T.locale}']`).addClass('active');
-  $('#footer_help').text(T.t('help'));
-  $('.ui.popup.top.left.transition.visible').remove();
-  $('.options_tooltip').popup();
-  $('.ui.dropdown').dropdown();
-
-  $('#locals_select').dropdown({
+  document.getElementById('locals_select').dropdown({
     action: 'activate',
-    onChange: function(value, text, $selector) {
-      if (store.get('importing')) return null;
+    onChange: function (value, text, $selector) {
+      if (store.get('importing')) return null
 
-      T.loadPhrases($selector.attr('data-value'));
-      _setBrowseTitle();
+      T.loadPhrases($selector.getAttribute('data-value'))
+      _setBrowseTitle()
       return _viewChanger('main', {
         div_id: 'view',
         transition: 'fade',
@@ -104,125 +98,118 @@ function _initSettings() {
           sources: sources_info,
           selected_sources: _selectedSources()
         }
-      }, _initSettings);
+      }, _initSettings)
     }
-  });
+  })
 
   if (store.get('lol_ver')) {
-    $('#lol_version').text(store.get('lol_ver'));
+    document.getElementById('lol_version').textContent = store.get('lol_ver')
   } else {
     championify.getVersion()
       .then(version => {
-        version = spliceVersion(version);
-        $('#lol_version').text(version);
-        store.set('lol_ver', version);
+        version = spliceVersion(version)
+        document.getElementById('lol_version').textContent = version
+        store.set('lol_ver', version)
       })
-      .catch(Log.warn);
+      .catch(Log.warn)
   }
 
-  R.forEach(source => {
+  sources_info.forEach(source => {
     if (store.get(`${source.id}_ver`)) {
-      $(`#${source.id}_version`).text(store.get(`${source.id}_ver`));
+      document.getElementById(`${source.id}_version`).textContent = store.get(`${source.id}_ver`)
     } else {
       sources[source.id].getVersion()
-        .then(version => $(`#${source.id}_version`).text(version))
-        .catch(Log.warn);
+        .then(version => document.getElementById(`${source.id}_version`).textContent = version)
+        .catch(Log.warn)
     }
-  }, sources_info);
+  })
 
-  return preferences.set(preferences.load());
+  return preferences.set(preferences.load())
 }
 
 /**
  * Change to complete view with transitions.
  */
-
-function completeView() {
-  function loadUnavailable() {
-    const undefined_builds = R.sortBy(R.prop('source'), store.get('undefined_builds') || [])
+function completeView () {
+  function loadUnavailable () {
+    const undefined_builds = (store.get('undefined_builds') || [])
+      .sort((a, b) => a.source.localeCompare(b.source))
       .map(entry => {
-        const champ_translation = T.t(entry.champ);
-        if (!champ_translation) return;
-        return `<span>${entry.source} ${champ_translation}: ${T.t(entry.position)}</span><br />`;
+        const champ_translation = T.t(entry.champ)
+        if (!champ_translation) return
+        return `<span>${entry.source} ${champ_translation}: ${T.t(entry.position)}</span><br />`
       })
-      .filter(R.identity);
+      .filter(Boolean)
 
     if (!undefined_builds.length) {
-      $('#not_available_log').append(`<span>${T.t('all_available')}</span><br />`);
+      document.getElementById('not_available_log').innerHTML += `<span>${T.t('all_available')}</span><br />`
     } else {
-      undefined_builds.forEach(entry => $('#not_available_log').append(entry));
+      undefined_builds.forEach(entry => document.getElementById('not_available_log').innerHTML += entry)
     }
   }
-  return _viewChanger('complete', {}, loadUnavailable);
+  return _viewChanger(templates.completeTemplate, {}, loadUnavailable)
 }
-
 
 /**
  * Change to error view with transitions.
  */
-
-function errorView() {
-  return _viewChanger('error');
+function errorView () {
+  return _viewChanger(templates.errorTemplate)
 }
-
 
 /**
  * Change to complete view with transitions.
  */
-
-function updateView() {
-  return _viewChanger('update');
+function updateView () {
+  return _viewChanger(templates.updateTemplate)
 }
-
 
 /**
  * Change to breaking changes view with transitions.
  */
-
-function manualUpdateView() {
-  return _viewChanger('manual_update');
+function manualUpdateView () {
+  return _viewChanger(templates.manualUpdateTemplate)
 }
 
 /**
  * Change to main view with reverse transitions.
  */
-
-function mainViewBack() {
-  function resetMain() {
-    $('#cl_progress').html('');
-    $('.submit_btns').removeClass('hidden');
-    $('.status').attr('class', 'status');
-    _initSettings();
+function mainViewBack () {
+  function resetMain () {
+    document.getElementById('cl_progress').innerHTML = ''
+    document.querySelectorAll('.submit_btns').forEach(el => el.classList.remove('hidden'))
+    document.querySelectorAll('.status').forEach(el => el.className = 'status')
+    _initSettings()
   }
 
-  return _viewChanger('main', {
+  return _viewChanger(templates.mainTemplate, {
     transition: 'fly right',
     render: {
       browse_title: store.get('browse_title'),
       sources: sources_info,
       selected_sources: _selectedSources()
     }
-  }, resetMain);
+  }, resetMain)
 }
 
 /**
  * Loads initial view when the app loads.
  * @returns {Promise}
  */
-
-function init() {
-  _setBrowseTitle();
+function init () {
+  _setBrowseTitle()
   const options = {
     T,
     browse_title: store.get('browse_title'),
     platform: process.platform,
     sources: sources_info,
     selected_sources: _selectedSources(),
-    version: pkg.version
-  };
+    version: pkg ? pkg.version : 'Unknown'
+  }
 
-  const html = marko.index.renderSync(options);
-  return $('#body').html(html).promise().then(() => _initSettings());
+  const html = templates.indexTemplate.renderSync(options)
+  document.getElementById('body').innerHTML = html
+  return _initSettings()
 }
 
 export default {
@@ -232,4 +219,4 @@ export default {
   mainBack: mainViewBack,
   manualUpdate: manualUpdateView,
   init
-};
+}

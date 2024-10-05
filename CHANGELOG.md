@@ -1,5 +1,36 @@
 # Changelog
 
+<a name="2.1.6-beta.1" />
+## 2.1.6-beta.1 (?)
+
+This release is a complete rework from Dustin Blackman's project. The main goal is to make the app more reliable and easier to maintain. The following changes were made:
+
+#### Breaking Changes - Sources
+
+- GG WP LolFlavor, website is down. The source was removed.
+- GG WP LolMasters, website is down. The source was removed.
+- GG WP Champion.gg, website is down. The source was removed.
+
+#### Breaking Changes - Technical
+
+- Links to the original project were modified and/or removed (Dustin has removed his Patreon page)
+- Removed the auto-updater feature in favor of electron-updater
+- Reworked the whole project structure and build process
+- Using Riot's DDragon API to get the latest informations, including patches and overall game data
+- Updated all main dependencies, which means new restructuration
+- Ditched Ramda, jQuery and other changes to further stick to native JavaScript. Cheerio was kept for scraping, as I do not know any better alternatives.
+- Modified the current translation system to use i18next and its plugins
+- Added Webpack to bundle and minify the application
+- Added ESLint & Stylelint (GG WP stylint) to enforce a consistent code style
+- Moved from Stylus to SASS (SCSS)
+- Removed the coverage system as I do not plan using Travis CI or any other coverall service.
+- Ditching Gulp in favor of a mixture of webpack and npm scripts. Furthermore, certain functions are also now covered by the excellent electron-builder library.
+
+#### Features
+
+- Added u.gg as an new source (WIP)
+- Overall maintenance and code cleanup
+
 <a name="2.1.5" />
 ## 2.1.5 (February 12th, 2018)
 

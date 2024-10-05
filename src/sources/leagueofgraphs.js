@@ -1,324 +1,191 @@
 import Promise from 'bluebird';
 import cheerio from 'cheerio';
-import escodegen from 'escodegen';
-import esprima from 'esprima';
-import R from 'ramda';
 
-import ChampionifyErrors from '../errors.js';
-import { arrayToBuilds, cl, request, shorthandSkills, trinksCon } from '../helpers/index.js';
-import Log from '../logger.js';
-import progressbar from '../progressbar.js';
-import store from '../store.js';
-import T from '../translate.js';
+import { cl, request, shorthandSkills, trinksCon } from '../helpers';
+import championify from '../championify';
+import Log from '../logger';
+import progressbar from '../progressbar';
+import store from '../store';
+import T from '../translate';
 
-const default_schema = require('../../data/default.json');
-const csspaths = require('../../data/csspaths.json');
-const prebuilts = require('../../data/prebuilts.json');
-const skillKeys = {
-  1: 'Q',
-  2: 'W',
-  3: 'E',
-  4: 'R'
-};
-
-function formatWins(value) {
-  return `${(value * 100).toFixed(2)}%`;
-}
-
-function processSkills(skills) {
-  skills = R.map(skill => skillKeys[skill[0]], skills);
-
-  if (store.get('settings').skillsformat) return shorthandSkills(skills);
-  return skills.join('.');
-}
-
-function formatForStore(champ, position, set_type, file_prefix, build) {
-  let title = T.t(position, true);
-  if (set_type) title += ` ${set_type}`;
-  const riot_json = R.merge(default_schema, {
-    champion: champ,
-    title: `CGG ${title} ${store.get('leagueofgraphs_ver')}`,
-    blocks: build
-  });
-
-  if (store.get('settings').locksr) riot_json.map = 'SR';
-  return {champ, file_prefix, riot_json, source: 'leagueofgraphs'};
-}
-
-/**
- * Export
- */
+import default_schema from "../../data/default.json" with { type: "json" };
 
 export const source_info = {
-  name: 'Leagueofgraphs',
+  name: 'LeagueOfGraphs',
   id: 'leagueofgraphs'
 };
 
-
-/**
-  * Gets current version Leagueofgraphs is using.
-  * @returns {Promise.<String|ChampionifyErrors.RequestError>} Championgg version
- */
-
-export function getVersion() {
-  if (store.get('importing')) cl(T.t('cgg_version'));
-  return request('https://www.leagueofgraphs.com/')
-    .then(body => {
-      const $c = cheerio.load(body);
-      const log_ver = $c('.patch').text().split('Patch: ')[1];
-      store.set('leagueofgraphs_ver', champgg_ver);
-      return log_ver;
-    })
-    .catch(err => {
-      throw new ChampionifyErrors.RequestError('Can\'t get Leagueofgraphs version').causedBy(err);
-    });
-}
-
-
-/**
- * Parses LeagueOfGraphs HTML.
- * @param {Function} Cheerio instance.
- * @returns {Object} Object containing Champion data.
- */
-
-function parseGGData($c) {
-  const parsed_data = {};
-  const script_tag = $c('script:contains("matchupData.")').text();
-
-  R.forEach(line => {
-    const var_name = line.expression.left.property.name;
-    if (R.contains(var_name, ['championData', 'champion'])) {
-      const data = escodegen.generate(line.expression.right, {format: {json: true}});
-      parsed_data[var_name] = JSON.parse(data);
-    }
-  }, esprima.parse(script_tag).body);
-
-  return parsed_data;
-}
-
-function getChampsAndPositions() {
-  return request('https://www.leagueofgraphs.com/')
-    .then(body => {
-      const $c = cheerio.load(body);
-      const links = $c('.champion-box')
-        .find('a')
-        .map((idx, el) => $c(el).attr('href'))
-        .get();
-
-      return R.pipe(
-        R.map(R.split('/')),
-        R.filter(entry => entry.length > 3),
-        R.map(entry => ({
-          champ: entry[2],
-          position: entry[3]
-        })),
-        R.groupBy(R.prop('champion-name')),
-        R.map(R.pluck('champion-role'))
-      )(links);
-    })
-    .catch(err => {
-      throw new ChampionifyErrors.RequestError('Can\'t get Leagueofgraphs champions').causedBy(err);
-    });
-}
-
-/**
- * Process scraped Leagueofgraphs page.
- * @param {Object} Champion object created by getSr
- * @param {String} Body of Leagueofgraphs page
- */
-
-function processChamp(champ, body) {
-  const $c = cheerio.load(body);
-  let gg;
-  try {
-    gg = parseGGData($c);
-  } catch (_error) {
-    throw new ChampionifyErrors.ParsingError(`Couldn't parse Leagueofgraphs script tag for ${champ}`);
-  }
-  if (!gg.champion || !gg.champion.roles) {
-    throw new ChampionifyErrors.ParsingError(`Couldn't parse roles from Leagueofgraphs script tag for ${champ}`);
-  }
-
-  let current_position = '';
-  $c(csspaths.championgg.positions).find('a').each((i, e) => {
-    let position = $c(e).attr('href').split('/');
-    position = position[position.length - 1];
-    if ($c(e).parent().hasClass('selected-role')) current_position = position.toLowerCase();
+function _arrayToBuilds(ids) {
+  ids = ids.map(id => {
+    id = id.toString();
+    if (id === '2010') id = '2003'; // Biscuits
+    return id;
   });
 
-  let positions = R.map(role => role.title.toLowerCase(), gg.champion.roles);
-  positions = R.filter(role => role !== current_position, positions);
+  const counts = ids.reduce((acc, id) => {
+    acc[id] = (acc[id] || 0) + 1;
+    return acc;
+  }, {});
 
-  const undefarray = [
-    !gg.championData.items.mostGames.winPercent,
-    !gg.championData.firstItems.mostGames.winPercent,
-    !gg.championData.items.highestWinPercent.winPercent,
-    !gg.championData.firstItems.highestWinPercent.winPercent
-  ];
-  if (R.contains(true, undefarray)) {
-    store.push('undefined_builds', {
-      source: source_info.name,
-      champ,
-      position: current_position
-    });
-    return;
-  }
-
-  const freq_core = {
-    items: gg.championData.items.mostGames.items,
-    wins: formatWins(gg.championData.items.mostGames.winPercent),
-    games: gg.championData.items.mostGames.games
-  };
-  const freq_start = {
-    items: gg.championData.firstItems.mostGames.items,
-    wins: formatWins(gg.championData.firstItems.mostGames.winPercent),
-    games: gg.championData.firstItems.mostGames.games
-  };
-  const highest_core = {
-    items: gg.championData.items.highestWinPercent.items,
-    wins: formatWins(gg.championData.items.highestWinPercent.winPercent),
-    games: gg.championData.items.highestWinPercent.games
-  };
-  const highest_start = {
-    items: gg.championData.firstItems.highestWinPercent.items,
-    wins: formatWins(gg.championData.firstItems.highestWinPercent.winPercent),
-    games: gg.championData.firstItems.highestWinPercent.games
-  };
-
-  const skills = {
-    most_freq: processSkills(gg.championData.skills.mostGames.order),
-    highest_win: processSkills(gg.championData.skills.highestWinPercent.order)
-  };
-
-  freq_start.build = arrayToBuilds(R.pluck('id', freq_start.items)).concat(prebuilts.trinkets);
-  highest_start.build = arrayToBuilds(R.pluck('id', highest_start.items)).concat(prebuilts.trinkets);
-  freq_core.build = arrayToBuilds(R.pluck('id', freq_core.items));
-  highest_core.build = arrayToBuilds(R.pluck('id', highest_core.items));
-
-  const templates = {
-    combindedStart: (wins, games) => `${T.t('frequent', true)}/${T.t('highest_start', true)} (${wins} ${T.t('wins').toLowerCase()} - ${games} ${T.t('games', true)})`,
-    combinedCore: (wins, games) => `${T.t('frequent', true)}/${T.t('highest_core', true)} (${wins} ${T.t('wins').toLowerCase()} - ${games} ${T.t('games', true)})`,
-    freqStart: (wins, games) => `${T.t('mf_starters', true)} (${wins} ${T.t('wins').toLowerCase()} - ${games} ${T.t('games', true)})`,
-    freqCore: (wins, games) => `${T.t('mf_core', true)} (${wins} ${T.t('wins').toLowerCase()} - ${games} ${T.t('games', true)})`,
-    highestStart: (wins, games) => `${T.t('hw_starters', true)} (${wins} ${T.t('wins').toLowerCase()} - ${games} ${T.t('games', true)})`,
-    highestCore: (wins, games) => `${T.t('hw_core', true)} (${wins} ${T.t('wins').toLowerCase()} - ${games} ${T.t('games', true)})`
-  };
-
-  const formatted_builds = [];
-  if (store.get('settings').splititems) {
-    const mf_build = [
-      {
-        items: freq_start.build,
-        type: templates.freqStart(freq_start.wins, freq_start.games)
-      },
-      {
-        items: freq_core.build,
-        type: templates.freqCore(freq_core.wins, freq_core.games)
-      }
-    ];
-    const hw_build = [
-      {
-        items: highest_start.build,
-        type: templates.highestStart(highest_start.wins, highest_start.games)
-      },
-      {
-        items: highest_core.build,
-        type: templates.highestCore(highest_core.wins, highest_core.games)
-      }
-    ];
-    formatted_builds.push(
-      formatForStore(champ, current_position, T.t('most_freq', true), `${current_position}_mostfreq`, trinksCon(mf_build, skills)),
-      formatForStore(champ, current_position, T.t('highest_win', true), `${current_position}_highwin`, trinksCon(hw_build, skills))
-    );
-  } else {
-    let builds = [];
-    if (R.equals(freq_start.build, highest_start.build)) {
-      builds.push({
-        items: freq_start.build,
-        type: templates.combindedStart(freq_start.wins, freq_start.games)
-      });
-    } else {
-      builds.push({
-        items: freq_start.build,
-        type: templates.freqStart(freq_start.wins, freq_start.games)
-      });
-      builds.push({
-        items: highest_start.build,
-        type: templates.highestStart(highest_start.wins, highest_start.games)
-      });
-    }
-    if (R.equals(freq_core.build, highest_core.build)) {
-      builds.push({
-        items: freq_core.build,
-        type: templates.combinedCore(freq_core.wins, freq_core.games)
-      });
-    } else {
-      builds.push({
-        items: freq_core.build,
-        type: templates.freqCore(freq_core.wins, freq_core.games)
-      });
-      builds.push({
-        items: highest_core.build,
-        type: templates.highestCore(highest_core.wins, highest_core.games)
-      });
-    }
-
-    builds = trinksCon(builds, skills);
-    formatted_builds.push(formatForStore(champ, current_position, null, current_position, builds));
-  }
-
-  return formatted_builds;
+  return [...new Set(ids)].map(id => ({
+    id,
+    count: counts[id]
+  }));
 }
 
-/**
- * Request champion.gg page, handles both the index and positions of champions.
- * @param {Object} Champion object created by getSr.
- * @returns {Promise}
- */
+function _getItems(champ, position) {
+  const riot_items = store.get('item_names');
+  return request.get(`http://www.leagueofgraphs.com/champions/items/${champ.toLowerCase()}/${position}/`)
+    .then(cheerio.load)
+    .then($c => {
+      // Starter Items
+      const starter_items_td = $c('.itemStarters').find('td').first();
+      const starter_item_imgs = starter_items_td.find('img');
+      const last_item_count = Number(starter_items_td.text().replace(/[^0-9]/g, ''));
+      const starter_items = starter_item_imgs.map((idx, elem) => {
+        let id;
+        if ($c(elem).attr('alt') === 'Total Biscuit of Rejuvenation') {
+          id = 2010;
+        } else {
+          id = riot_items[$c(elem).attr('alt')];
+        }
 
-function requestPage(champ, position) {
-  function markUndefined() {
-    store.push('undefined_builds', {
-      source: source_info.name,
-      champ,
-      position: position
-    });
-    return;
-  }
+        if (idx === (starter_item_imgs.length - 1) && last_item_count) return Array(last_item_count).fill(id);
+        return id;
+      }).get().flat();
 
-  return request(`http://champion.gg/champion/${champ}/${position}`)
-    .then(body => {
-      if (body.indexOf('We\'re currently in the process of generating stats for') > -1) return markUndefined();
-      return processChamp(champ, body);
-    })
-    .catch(err => {
-      Log.warn(err);
-      markUndefined();
-      return;
+      // Core Items
+      const core_items = $c('.data_table').eq(1).find('td').first().find('img').map((idx, elem) => {
+        return riot_items[$c(elem).attr('alt')];
+      }).get();
+
+      // End Items
+      const end_items = $c('.data_table').eq(2).find('img').slice(0, 6).map((idx, elem) => {
+        return riot_items[$c(elem).attr('alt')];
+      }).get();
+
+      // Boots
+      const boots = $c('.data_table').eq(3).find('img').slice(0, 3).map((idx, elem) => {
+        return riot_items[$c(elem).attr('alt')];
+      }).get();
+
+      return {
+        starter_items,
+        core_items,
+        end_items,
+        boots
+      };
     });
 }
 
-/**
- * Scrapes Champion.gg at 3 concurrenct connections and saves data in the store.
- * @param {Array} Array of strings of Champs from Riot.
- * @returns {Promise}
- */
+function _getSkills(champ, position) {
+  return request(`http://www.leagueofgraphs.com/champions/skills-orders/${champ.toLowerCase()}/${position}/`)
+    .then(cheerio.load)
+    .then($c => {
+      // Skills
+      let skills = [];
+      const skill_keys = {
+        1: 'Q',
+        2: 'W',
+        3: 'E',
+        4: 'R'
+      };
+
+      $c('.skillsOrderTable').first().find('tr').each((idx, elem) => {
+        if (idx === 0) return;
+        const ability = skill_keys[idx];
+        $c(elem).find('.skillCell').each((idx, elem) => {
+          if ($c(elem).hasClass('active')) skills[idx] = ability;
+        });
+      });
+
+      if (store.get('settings').skillsformat) {
+        skills = shorthandSkills(skills);
+      } else {
+        skills = skills.join('.');
+      }
+
+      return skills;
+    });
+}
+
+function _getPositions(champ) {
+  return request(`http://www.leagueofgraphs.com/champions/items/${champ.toLowerCase()}/`)
+    .then(cheerio.load)
+    .then($c => {
+      const positions = $c('.bannerSubtitle').text().toLowerCase().trim().split(', ').map(position => {
+        if (position === 'mid') return 'middle';
+        if (position === 'ad carry') return 'adc';
+        if (position === 'jungler') return 'jungle';
+        return position;
+      });
+      return positions;
+    });
+}
 
 export function getSr() {
-  if (!store.get('championgg_ver')) return getVersion().then(getSr);
+  return championify.getItems()
+    .then(() => Promise.resolve(store.get('champs')))
+    .map(champ => {
+      cl(`${T.t('processing')} LeagueOfGraphs: ${T.t(champ)}`);
+      progressbar.incrChamp();
 
-  return getChampsAndPositions()
-    .then(champs => {
-      return Promise.map(R.reverse(R.keys(champs)), champ => {
-        cl(`${T.t('processing')} Champion.gg: ${T.t(champ)}`);
-        progressbar.incrChamp();
+      return _getPositions(champ)
+        .map(position => {
+          return Promise.join(_getItems(champ, position), _getSkills(champ, position))
+            .spread((items, skills) => {
+              const blocks = [
+                {
+                  items: _arrayToBuilds(items.starter_items),
+                  type: T.t('starter', true)
+                },
+                {
+                  items: _arrayToBuilds(items.core_items),
+                  type: T.t('core_items', true)
+                },
+                {
+                  items: _arrayToBuilds(items.end_items),
+                  type: T.t('endgame_items', true)
+                },
+                {
+                  items: _arrayToBuilds(items.boots),
+                  type: T.t('boots', true)
+                }
+              ];
 
-        return Promise.map(champs[champ], position => {
-          return requestPage(champ, position);
-        }, {concurrency: 1});
-      }, {concurrency: 3});
-    })
-    .then(R.flatten)
-    .then(R.reject(R.isNil))
-    .then(data => store.push('sr_itemsets', data));
+              position = T.t(position, true);
+              const riot_json = {
+                ...default_schema,
+                champion: champ,
+                title: `LOG ${position} ${store.get('leagueofgraphs_ver')}`,
+                blocks: trinksCon(blocks, { highest_win: skills, most_freq: skills })
+              };
+
+              return {
+                champ,
+                file_prefix: position,
+                riot_json,
+                source: 'leagueofgraphs'
+              };
+            })
+            .catch(err => {
+              Log.warn(err);
+              store.push('undefined_builds', { champ, position, source: source_info.name });
+            });
+        })
+        .catch(err => {
+          Log.warn(err);
+          store.push('undefined_builds', { champ, position: 'All', source: source_info.name });
+        });
+    }, { concurrency: 3 })
+    .then(data => data.flat())
+    .then(data => store.push('sr_itemsets', data))
+    .catch(err => console.log(err.stack));
+}
+
+export function getVersion() {
+  return request('http://www.leagueofgraphs.com/contact')
+    .then(cheerio.load)
+    .then($c => $c('.patch').text().replace(/Patch: /g, ''))
+    .tap(version => store.set('leagueofgraphs_ver', version));
 }

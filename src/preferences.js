@@ -1,25 +1,21 @@
 import Promise from 'bluebird';
 import path from 'path';
-import R from 'ramda';
 import semver from 'semver';
-import $ from './helpers/jquery';
 
-import ChampionifyErrors from './errors';
-import Log from './logger';
-import pathManager from './path_manager';
-import store from './store';
-import T from './translate';
+import ChampionifyErrors from './errors.js';
+import Log from './logger.js';
+import pathManager from './path_manager.js';
+import store from './store.js';
+import T from './translate.js';
 
 const fs = Promise.promisifyAll(require('fs-extra'));
-const pkg = require('../package.json');
-
+import pkg from "../package.json" with { type: "json" };
 
 class Preferences {
   /**
    * Get preference directory
    * @returns {String} Preference directory path
    */
-
   directory() {
     let preference_dir;
     if (process.platform === 'darwin') {
@@ -34,7 +30,6 @@ class Preferences {
    * Get preference file path
    * @returns {String} Preference file path
    */
-
   file() {
     return path.join(this.directory(), 'prefs.json');
   }
@@ -43,7 +38,6 @@ class Preferences {
    * Gets preferences file
    * @returns {String|Null} JSON object of preferences, or null
    */
-
   load() {
     const preference_file = this.file();
     if (fs.existsSync(preference_file)) {
@@ -68,11 +62,10 @@ class Preferences {
    * Applies preferences to UI
    * @param {Object} Preferences object
    */
-
   set(preferences) {
     if (!preferences) return pathManager.findInstallPath();
 
-    $('#local_version').text(preferences.local_is_version || T.t('unknown'));
+    document.getElementById('local_version').textContent = preferences.local_is_version || T.t('unknown');
     pathManager.checkInstallPath(preferences.install_path, function(err) {
       if (err) {
         pathManager.findInstallPath();
@@ -81,44 +74,45 @@ class Preferences {
       }
     });
 
-    // There's a better ramda function for this somewhere...
-    R.forEach(entry => {
-      const key = entry[0];
-      const val = entry[1];
-
+    Object.entries(preferences.options).forEach(([key, val]) => {
       if (key.indexOf('position') > -1) {
-        $(`#options_${key}`).find(`.${val}`).addClass('active selected');
+        const element = document.querySelector(`#options_${key} .${val}`);
+        if (element) {
+          element.classList.add('active', 'selected');
+        }
       } else {
-        $(`#options_${key}`).prop('checked', val);
+        const element = document.getElementById(`options_${key}`);
+        if (element) {
+          element.checked = val;
+        }
       }
-    }, R.toPairs(preferences.options));
+    });
   }
 
   /**
    * Gets all preferences from UI
    * @returns {Object} Preferences object
    */
-
   get() {
-    const consumables_position = $('#options_consumables_position').find('.beginning').hasClass('selected') ? 'beginning' : 'end';
-    const trinkets_position = $('#options_trinkets_position').find('.beginning').hasClass('selected') ? 'beginning' : 'end';
+    const consumables_position = document.querySelector('#options_consumables_position .beginning').classList.contains('selected') ? 'beginning' : 'end';
+    const trinkets_position = document.querySelector('#options_trinkets_position .beginning').classList.contains('selected') ? 'beginning' : 'end';
     return {
       prefs_version: pkg.version,
       locale: T.locale,
       install_path: store.get('lol_install_path'),
       champ_path: store.get('lol_champ_path'),
-      local_is_version: $('#local_version').text(),
+      local_is_version: document.getElementById('local_version').textContent,
       options: {
-        splititems: $('#options_splititems').is(':checked'),
-        skillsformat: $('#options_skillsformat').is(':checked'),
-        consumables: $('#options_consumables').is(':checked'),
+        splititems: document.getElementById('options_splititems').checked,
+        skillsformat: document.getElementById('options_skillsformat').checked,
+        consumables: document.getElementById('options_consumables').checked,
         consumables_position: consumables_position,
-        trinkets: $('#options_trinkets').is(':checked'),
+        trinkets: document.getElementById('options_trinkets').checked,
         trinkets_position: trinkets_position,
-        locksr: $('#options_locksr').is(':checked'),
-        sr_source: $('#options_sr_source').val().split(','),
-        dontdeleteold: $('#options_dontdeleteold').is(':checked'),
-        aram: $('#options_aram').is(':checked')
+        locksr: document.getElementById('options_locksr').checked,
+        sr_source: document.getElementById('options_sr_source').value.split(','),
+        dontdeleteold: document.getElementById('options_dontdeleteold').checked,
+        aram: document.getElementById('options_aram').checked
       }
     };
   }
@@ -128,7 +122,6 @@ class Preferences {
    * @param {Object} [this.get()] Preferences object
    * @returns {Promise}
    */
-
   save(preferences) {
     preferences = preferences || this.get();
     if (!preferences) throw new ChampionifyErrors.OperationalError('Preferences object does not exist');

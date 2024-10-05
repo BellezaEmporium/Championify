@@ -1,53 +1,14 @@
-/**
- * @class Store
- * @classdesc A global state for setting and grabbing information within Championify
- */
+import Store from 'electron-store'
 
-class Store {
-  constructor() {
-    this.store = {};
-  }
+const store = new Store()
 
-  /**
-   * Gets value of key
-   * @param {String} Key
-   * @returns Value
-   */
-
-  get(key) {
-    return this.store[key];
-  }
-
-  /**
-   * Sets value of key
-   * @param {String} Key
-   * @param Value
-   */
-
-  set(key, value) {
-    this.store[key] = value;
-  }
-
-  /**
-   * Pushes value of key to an array
-   * @param {String} Key
-   * @param Value
-   */
-
-  push(key, value) {
-    if (!this.store[key]) this.store[key] = [];
-    this.store[key].push(value);
-  }
-
-  /**
-   * Remove keys from store if it exists
-   * @param {String} Key
-   */
-
-  remove(key) {
-    if (this.store[key]) delete this.store[key];
-  }
+export default {
+  get: (key) => store.get(key),
+  set: (key, value) => store.set(key, value),
+  push: (key, value) => {
+    const array = store.get(key) || []
+    array.push(value)
+    store.set(key, array)
+  },
+  remove: (key) => store.delete(key)
 }
-
-const store = new Store();
-export default store;

@@ -259,10 +259,6 @@
     "text": "Download ARAM Item Sets",
     "done": true
   },
-  "options_aram_tooltip": {
-    "text": "Download ARAM item sets from LolFlavor",
-    "done": true
-  },
   "options_consumables": {
     "done": true,
     "text": "Enable Consumables"

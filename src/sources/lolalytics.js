@@ -1,13 +1,10 @@
-import R from 'ramda';
 import { cl, request, shorthandSkills, trinksCon } from '../helpers';
-
 import progressbar from '../progressbar';
 import store from '../store';
 import T from '../translate.js';
 
-const default_schema = require('../../data/default.json');
+import default_schema from "../../data/default.json" with { type: "json" };
 
-let cache;
 const skills_map = {
   1: 'Q',
   2: 'W',
@@ -15,44 +12,49 @@ const skills_map = {
   4: 'R'
 };
 
-function getCache() {
-  if (cache) return cache;
-  cache = request({url: 'http://championify.lolalytics.com/data/1.0/ranked.json', json: true});
-  return cache;
-}
-
 export function getVersion() {
   return getCache()
-    .then(R.prop('version'))
+    .then(cache => cache.version)
     .then(version => {
       const split = version.split('.');
       split.pop();
       return split.join('.');
     })
-    .tap(version => store.set('lolalytics_ver', version));
+    .then(version => {
+      store.set('lolalytics_ver', version);
+      return version;
+    });
 }
 
 function objToItems(title, set_type, obj) {
-  let items = R.sortBy(R.prop('rate'), R.map(id => ({
-    id,
-    count: 1,
-    rate: obj[id]
-  }), R.keys(obj)));
+  let items = Object.keys(obj)
+    .map(id => ({
+      id,
+      count: 1,
+      rate: obj[id]
+    }))
+    .sort((a, b) => a.rate - b.rate);
 
   return {
     type: `${set_type} ${title}`,
-    items: R.reverse(R.map(R.omit(['rate']), items))
+    items: items.reverse().map(item => {
+      const { rate, ...rest } = item;
+      return rest;
+    })
   };
 }
 
 function mapSkills(skills) {
   if (!skills) return [];
 
-  const skills_list = R.sortBy(R.prop('rate'), R.map(entry => ({
-    skills: entry,
-    rate: skills[entry]
-  }), R.keys(skills)));
-  const mapped_skills = R.map(entry => skills_map[entry], R.last(skills_list).skills);
+  const skills_list = Object.keys(skills)
+    .map(entry => ({
+      skills: entry,
+      rate: skills[entry]
+    }))
+    .sort((a, b) => a.rate - b.rate);
+
+  const mapped_skills = skills_list[skills_list.length - 1].skills.split('').map(entry => skills_map[entry]);
 
   if (store.get('settings').skillsformat) return shorthandSkills(mapped_skills);
   return mapped_skills;
@@ -61,16 +63,16 @@ function mapSkills(skills) {
 function createJSON(champ, skills, position, blocks, set_type) {
   let title = position;
   if (set_type) title += ` ${set_type}`;
-  const riot_json = R.merge(default_schema, {
+  const riot_json = {
+    ...default_schema,
     champion: champ,
     title: `LAS ${store.get('lolalytics_ver')} ${title}`,
     blocks: trinksCon(blocks, skills)
-  });
+  };
 
   return {
     champ,
-    file_prefix:
-    title.replace(/ /g, '_').toLowerCase(),
+    file_prefix: title.replace(/ /g, '_').toLowerCase(),
     riot_json,
     source: 'lolalytics'
   };
@@ -104,8 +106,8 @@ function processSets(champ, position, sets) {
 
   if (store.get('settings').splititems) {
     return [
-      createJSON(champ, skills, position, R.values(mostfreq), T.t('most_freq', true)),
-      createJSON(champ, skills, position, R.values(highestwin), T.t('highest_win', true))
+      createJSON(champ, skills, position, Object.values(mostfreq), T.t('most_freq', true)),
+      createJSON(champ, skills, position, Object.values(highestwin), T.t('highest_win', true))
     ];
   }
 
@@ -131,18 +133,18 @@ export function getSr() {
   if (!store.get('lolalytics_ver')) return getVersion().then(getSr);
 
   return getCache()
-    .then(R.prop('stats'))
+    .then(cache => cache.stats)
     .then(stats => {
-      return R.map(champ => {
+      return Object.keys(stats).map(champ => {
         cl(`${T.t('processing')} Lolalytics: ${T.t(champ)}`);
         progressbar.incrChamp();
 
-        return R.map(position => {
+        return Object.keys(stats[champ]).map(position => {
           return processSets(champ, position, stats[champ][position]);
-        }, R.keys(stats[champ]));
-      }, R.keys(stats));
+        });
+      });
     })
-    .then(R.flatten)
+    .then(data => data.flat())
     .then(data => store.push('sr_itemsets', data));
 }
 

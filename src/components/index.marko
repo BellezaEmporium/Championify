@@ -1,0 +1,37 @@
+<script>
+  import _locales from './_locales.marko'
+  import main from './main.marko'
+</script>
+
+<header>
+    <if(input.platform === 'darwin')>
+      <div class="osx_buttons">
+        <div class="clickable_div"><a href="" class="sys_button close"><img alt="Close OSX button" src="img/osx_buttons/close.png"/></a></div>
+        <div class="clickable_div"><a href="" class="sys_button minimize"><img alt="Minimize OSX button" src="img/osx_buttons/minimize.png"/></a></div><a class="sys_button maximize"></a>
+      </div>
+    </if>
+    <if(input.platform === 'win32')>
+      <div class="win_buttons">
+        <div class="sys_button minimize"><img alt="Minimize Windows button" src="img/win_buttons/minimize.png"/></div>
+        <div class="sys_button maximize"><img alt="Maximize Windows button" src="img/win_buttons/maximize.png"/></div>
+        <div class="sys_button close"><img alt="Close Windows button" src="img/win_buttons/x.png"/></div>
+      </div>
+    </if>
+</header>
+
+<_locales ...input />
+
+<div class="one column row">
+  <div class="banner column"><img alt="Championify logo" src="./img/logo.png" class="top_logo"/>
+    <div class="ui divider"></div>
+  </div>
+</div>
+
+<div id="view" class="ui container">
+  <main ...input />
+</div>
+
+<footer>
+  <div class="github"><a><i class="github icon"></i>BellezaEmporium, DustinBlackman</a></div>
+  <div class="championify_version"><span>v${input.version}</span></div>
+</footer>

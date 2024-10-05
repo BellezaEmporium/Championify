@@ -1,23 +1,24 @@
 import Promise from 'bluebird';
-import GitHubAPI from 'github';
-import glob from 'glob';
+import { Octokit } from '@octokit/rest';
+import { glob } from 'glob';
 import gulp from 'gulp';
 import path from 'path';
-import R from 'ramda';
+import fsExtra from 'fs-extra';
+import request from 'request';
+import pkg from '../package.json' with { type: "json" };
 
-const fs = Promise.promisifyAll(require('fs-extra'));
-const request = Promise.promisify(require('request'));
-const pkg = require('../package.json');
+const fs = Promise.promisifyAll(fsExtra);
+const requestAsync = Promise.promisify(request);
 
 global.vtReports = {};
 
 gulp.task('virustotal', function() {
-  return request({url: `https://www.virustotal.com/vtapi/v2/file/scan/upload_url?apikey=${process.env.VIRUSTOTAL}`, json: true})
-    .then(R.path(['body', 'upload_url']))
+  return requestAsync({url: `https://www.virustotal.com/vtapi/v2/file/scan/upload_url?apikey=${process.env.VIRUSTOTAL}`, json: true})
+    .then(response => response.body.upload_url)
     .then(upload_url => {
       return Promise.resolve(glob.sync('./releases/*'))
         .each(file_path => {
-          if (file_path.indexOf('RELEASE') > -1) return;
+          if (file_path.includes('RELEASE')) return;
           console.log('[VIRUSTOTAL] Uploading: ' + file_path);
           const options = {
             method: 'POST',
@@ -25,30 +26,37 @@ gulp.task('virustotal', function() {
             url: upload_url
           };
 
-          return request(options)
-            .then(R.prop('body'))
-            .then(JSON.parse)
-            .then(R.prop('permalink'))
-            .then(permalink => global.vtReports[path.basename(file_path)] = permalink);
+          return requestAsync(options)
+            .then(response => JSON.parse(response.body))
+            .then(data => {
+              global.vtReports[path.basename(file_path)] = data.permalink;
+            });
         });
     })
     .tap(() => console.log(global.vtReports));
 });
 
 gulp.task('github-release', function(cb) {
-  const github = new GitHubAPI({
-    version: '3.0.0',
-    protocol: 'https',
-    timeout: 5000,
-    headers: {'user-agent': 'Championify-Gulp-Release'}
+  const octokit = new Octokit({
+    auth: process.env.GITHUB_TOKEN,
+    userAgent: 'Championify-Gulp-Release',
+    timeZone: 'America/Los_Angeles',
+    baseUrl: 'https://api.github.com',
+    log: {
+      debug: () => {},
+      info: () => {},
+      warn: console.warn,
+      error: console.error
+    },
+    request: {
+      agent: undefined,
+      fetch: undefined,
+      timeout: 5000
+    }
   });
 
-  github.authenticate({type: 'oauth', token: process.env.GITHUB_TOKEN});
-  const createRelease = Promise.promisify(github.releases.createRelease);
-  const uploadAsset = Promise.promisify(github.releases.uploadAsset);
-
   const changelog = fs.readFileSync('./CHANGELOG.md', 'utf8');
-  const download_path = `https://github.com/dustinblackman/Championify/releases/download/${pkg.version}`;
+  const download_path = `https://github.com/BellezaEmporium/Championify/releases/download/${pkg.version}`;
   let body = `## Quick Downloads
 
 Windows: [Setup.exe](${download_path}/Championify-Windows-Setup-${pkg.version}.exe) | [ZIP](${download_path}/Championify-WIN-${pkg.version}.zip)
@@ -60,13 +68,13 @@ macOS: [DMG](${download_path}/Championify-OSX-${pkg.version}.dmg) | [ZIP](${down
     return `- [${name}](${link})\n`;
   }
 
-  R.forEach(item => {
-    if (item.indexOf('Windows_Setup') > -1) body += formatTitle('Windows Setup', global.vtReports[item]);
-    if (item.indexOf('-WIN-') > -1) body += formatTitle('Windows ZIP', global.vtReports[item]);
-    if (item.indexOf('OSX') > -1 && item.indexOf('dmg') > -1) body += formatTitle('Mac/OSX DMG', global.vtReports[item]);
-    if (item.indexOf('OSX') > -1 && item.indexOf('zip') > -1) body += formatTitle('Mac/OSX ZIP', global.vtReports[item]);
-    if (item.indexOf('nupkg') > -1) body += formatTitle('nupkg', global.vtReports[item]);
-  }, R.keys(global.vtReports));
+  Object.keys(global.vtReports).forEach(item => {
+    if (item.includes('Windows_Setup')) body += formatTitle('Windows Setup', global.vtReports[item]);
+    if (item.includes('-WIN-')) body += formatTitle('Windows ZIP', global.vtReports[item]);
+    if (item.includes('OSX') && item.includes('dmg')) body += formatTitle('Mac/OSX DMG', global.vtReports[item]);
+    if (item.includes('OSX') && item.includes('zip')) body += formatTitle('Mac/OSX ZIP', global.vtReports[item]);
+    if (item.includes('nupkg')) body += formatTitle('nupkg', global.vtReports[item]);
+  });
 
   const create_release = {
     owner: 'dustinblackman',
@@ -77,20 +85,22 @@ macOS: [DMG](${download_path}/Championify-OSX-${pkg.version}.dmg) | [ZIP](${down
     body
   };
 
-  return createRelease(create_release)
-    .then(R.prop('id'))
-    .then(id => {
+  octokit.repos.createRelease(create_release)
+    .then(response => {
+      const release_id = response.data.id;
       return Promise.resolve(glob.sync('./releases/*'))
         .each(file_path => {
           console.log(`[GITHUB] Uploading: ${file_path}`);
           const upload_file = {
-            owner: 'dustinblackman',
+            owner: 'BellezaEmporium',
             repo: 'Championify',
-            id,
+            release_id,
             name: path.basename(file_path),
-            filePath: file_path
+            data: fs.readFileSync(file_path)
           };
-          return uploadAsset(upload_file);
+          return octokit.repos.uploadReleaseAsset(upload_file);
         });
-    });
+    })
+    .then(() => cb())
+    .catch(err => cb(err));
 });

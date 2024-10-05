@@ -1,10 +1,9 @@
-import path from 'path';
-import R from 'ramda';
-import winston from 'winston';
+import path from 'path'
+import winston from 'winston'
 
-import ChampionifyErrors from './errors';
-import { EndSession } from './helpers';
-import preferences from './preferences';
+import ChampionifyErrors from './errors.js'
+import { EndSession } from './helpers/index.js'
+import preferences from './preferences.js'
 
 /**
  * Winston logger
@@ -25,17 +24,17 @@ const Log = winston.createLogger({
     })
   ],
   exitOnError: false,
-});
+})
 
-Log.exitOnError = function(err) {
-  let e;
-  if (R.is(String, err)) {
-    e = new ChampionifyErrors.UncaughtException(err);
+Log.exitOnError = function (err) {
+  let e
+  if (typeof err === 'string') {
+    e = new ChampionifyErrors.UncaughtException(err)
   } else {
-    e = new ChampionifyErrors.UncaughtException().causedBy(err);
+    e = new ChampionifyErrors.UncaughtException().causedBy(err)
   }
-  EndSession(e);
-  return false;
-};
+  EndSession(e)
+  return false
+}
 
-export default Log;
+export default Log

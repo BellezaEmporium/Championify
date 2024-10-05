@@ -1,12 +1,11 @@
-import fs from 'fs';
-import path from 'path';
-import R from 'ramda';
+import fs from 'fs'
+import path from 'path'
 
-import ChampionifyErrors from './errors';
-import Log from './logger';
+import ChampionifyErrors from './errors.js'
+import Log from './logger.js'
 
 // Ingame locales are locals that LoL does not support, and instead default to English.
-const ingame_locals = ['ar', 'ja'];
+const ingame_locals = ['ar', 'ja']
 
 /**
  * @class Translate
@@ -14,21 +13,21 @@ const ingame_locals = ['ar', 'ja'];
  */
 
 class Translate {
-  constructor(locale) {
-    this.loadPhrases(locale);
+  constructor (locale) {
+    this.loadPhrases(locale)
   }
 
   /**
    * Loads locales from file in to context
    * @param {String} Locale
    */
-  loadPhrases(locale) {
-    this.locale = locale;
-    const i18n_path = path.join(__dirname, `../i18n/${locale}.json`);
-    if (!fs.existsSync(i18n_path)) throw new ChampionifyErrors.OperationalError(`${locale} does not exist in i18n folder`);
+  loadPhrases (locale) {
+    this.locale = locale
+    const i18n_path = path.join(__dirname, `../i18n/${locale}.json`)
+    if (!fs.existsSync(i18n_path)) throw new ChampionifyErrors.OperationalError(`${locale} does not exist in i18n folder`)
 
-    this.phrases = require(i18n_path);
-    this.english_phrases = require(path.join(__dirname, '../i18n/en.json'));
+    this.phrases = require(i18n_path)
+    this.english_phrases = require(path.join(__dirname, '../i18n/en.json'))
   }
 
   /**
@@ -37,32 +36,32 @@ class Translate {
    * @param {Boolean} [false] If this is an ingame translation, it checks whether the locale is an accept League of Legends language
    */
 
-  t(phrase, ingame) {
-    phrase = phrase.toLowerCase();
-    let translated_phrase = this.phrases[phrase];
-    if (ingame && R.contains(this.locale, ingame_locals)) {
-      translated_phrase = this.english_phrases[phrase];
+  t (phrase, ingame) {
+    phrase = phrase.toLowerCase()
+    let translated_phrase = this.phrases[phrase]
+    if (ingame && ingame_locals.includes(this.locale)) {
+      translated_phrase = this.english_phrases[phrase]
     }
     if (!translated_phrase) {
-      Log.error(new ChampionifyErrors.TranslationError(`Phrase does not exist for ${this.locale}: ${phrase}`));
-      return;
+      Log.error(new ChampionifyErrors.TranslationError(`Phrase does not exist for ${this.locale}: ${phrase}`))
+      return
     }
-    return translated_phrase;
+    return translated_phrase
   }
 
   /**
    * Merges translations with current translations in context. Used for getting translated Champion names from riot.
    * @param {Object} Translations to merge
    */
-  merge(translations) {
-    this.phrases = R.merge(this.phrases, translations);
+  merge (translations) {
+    this.phrases = { ...this.phrases, ...translations }
   }
 
   // TODO: This should get moved somewhere else.
   /**
    * Returns the flag locale to be used with Semantic
    */
-  flag() {
+  flag () {
     const flags = {
       'pt-BR': 'br',
       'zh-CN': 'cn',
@@ -85,15 +84,15 @@ class Translate {
       sr: 'rs',
       sv: 'se',
       vi: 'vn'
-    };
-    return flags[this.locale] || this.locale;
+    }
+    return flags[this.locale] || this.locale
   }
 
   // TODO: This should get moved somewhere else.
   /**
    * Returns the riot locale to be used when querying Riot's api.
    */
-  riotLocale() {
+  riotLocale () {
     const riot_locales = {
       cs: 'cs_CZ',
       de: 'de_DE',
@@ -117,10 +116,10 @@ class Translate {
       vi: 'vn_VN',
       'zh-CN': 'zh_CN',
       'zh-TW': 'zh_TW'
-    };
-    return riot_locales[this.locale] || 'en_US';
+    }
+    return riot_locales[this.locale] || 'en_US'
   }
 }
 
-const translate = new Translate('en');
-export default translate;
+const translate = new Translate('en')
+export default translate

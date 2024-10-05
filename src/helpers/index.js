@@ -1,26 +1,22 @@
 import Promise from 'bluebird';
-const { exec } = require('child_process');
-import { remote } from 'electron';
-import R from 'ramda';
-import $ from './jquery';
+import { exec } from "child_process";
+import { ipcRenderer } from 'electron';
 
-import ChampionifyErrors from '../errors';
-import Log from '../logger';
-import store from '../store';
-import T from '../translate';
-import viewManager from '../view_manager';
+import ChampionifyErrors from '../errors.js';
+import Log from '../logger.js';
+import store from '../store.js';
+import T from '../translate.js';
+import viewManager from '../view_manager.js';
 
 // Export methods defined in request.js
-export * from './request';
+export * from './request.js';
 
-const prebuilts = require('../../data/prebuilts.json');
-
+import prebuilts from "../../data/prebuilts.json" with { type: "json" };
 
 /**
  * Function if error exists, enable error view and log error ending the session.
  * @param {Object} Error instance
  */
-
 export function EndSession(c_error) {
   Log.error(c_error);
   window.error_message = c_error.message || c_error.rootCause.message;
@@ -34,24 +30,7 @@ export function EndSession(c_error) {
  * @returns {Promise.Boolean|ChampionifyErrors.ElevateError}
  */
 export function elevate(params = []) {
-  if (process.platform !== 'win32') {
-    return Promise.reject(new Error('Elevation is only implemented for Windows'));
-  }
-
-  return new Promise((resolve, reject) => {
-    const browser_window = remote.getCurrentWindow();
-    browser_window.hide();
-
-    const command = `powershell -Command "Start-Process '${process.execPath}' -ArgumentList '--runned-as-admin ${params.join(' ')}' -Verb RunAs"`;
-
-    exec(command, (error, stdout, stderr) => {
-      if (error) {
-        browser_window.show();
-        return reject(new ChampionifyErrors.ElevateError(`Failed to elevate permissions: ${stderr}`));
-      }
-      remote.app.quit();
-    });
-  });
+  return ipcRenderer.invoke('elevate', params);
 }
 
 /**
@@ -68,10 +47,15 @@ export function spliceVersion(version) {
  * @param {String} Console Message.
  * @param {String} [level='info'] Logging level
  */
-
 export function cl(text, level = 'info') {
   Log[level](text);
-  return $('#cl_progress').prepend(`<span>${text}</span><br />`);
+  const progressDiv = document.getElementById('cl_progress');
+  if (progressDiv) {
+    const span = document.createElement('span');
+    span.textContent = text;
+    progressDiv.prepend(span);
+    progressDiv.prepend(document.createElement('br'));
+  }
 }
 
 /**
@@ -88,7 +72,6 @@ export function capitalize(string) {
  * @param {Object} Formatted skill priorities
  * @returns Array of block item sets with added trinkets and consumables
  */
-
 export function trinksCon(builds, skills = {}) {
   if (store.get('settings').consumables) {
     let consumables_title = T.t('consumables', true);
@@ -128,13 +111,23 @@ export function trinksCon(builds, skills = {}) {
  * @returns String Shorthand representation
  */
 export function shorthandSkills(skills) {
-  let skill_count = R.countBy(R.toLower, R.slice(0, 9, skills));
-  delete skill_count.r;
-  skill_count = R.invertObj(skill_count);
-  const counts = R.keys(skill_count).sort().reverse();
+  let skill_count = skills.slice(0, 9).reduce((acc, skill) => {
+    skill = skill.toLowerCase();
+    if (skill !== 'r') {
+      acc[skill] = (acc[skill] || 0) + 1;
+    }
+    return acc;
+  }, {});
 
-  const skill_order = R.map(count_num => R.toUpper(skill_count[count_num]), counts);
-  return `${skills.slice(0, 4).join('.')} - ${R.join('>', skill_order)}`;
+  skill_count = Object.entries(skill_count).reduce((acc, [key, value]) => {
+    acc[value] = key;
+    return acc;
+  }, {});
+
+  const counts = Object.keys(skill_count).sort((a, b) => b - a);
+
+  const skill_order = counts.map(count_num => skill_count[count_num].toUpperCase());
+  return `${skills.slice(0, 4).join('.')} - ${skill_order.join('>')}`;
 }
 
 /**
@@ -143,14 +136,19 @@ export function shorthandSkills(skills) {
  * @returns Array of block item
  */
 export function arrayToBuilds(ids) {
-  ids = R.map(id => {
+  ids = ids.map(id => {
     id = id.toString();
     if (id === '2010') id = '2003'; // Biscuits
     return id;
-  }, ids);
-  const counts = R.countBy(R.identity)(ids);
-  return R.map(id => ({
+  });
+
+  const counts = ids.reduce((acc, id) => {
+    acc[id] = (acc[id] || 0) + 1;
+    return acc;
+  }, {});
+
+  return [...new Set(ids)].map(id => ({
     id,
     count: counts[id]
-  }), R.uniq(ids));
+  }));
 }

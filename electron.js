@@ -1,24 +1,16 @@
-const { app, BrowserWindow } = require('electron');
-const fs = require('fs');
-const path = require('path');
-const R = require('ramda');
+import { app, BrowserWindow, ipcMain, dialog } from 'electron'
+import path from 'path'
+import { fileURLToPath } from 'url'
+import initAutoUpdater from './src/update.js'
+import { exec } from 'child_process'
 
-// Used for Squirrel install on Windows
-if (require('electron-squirrel-startup')) app.quit();
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
-const devEnabled = process.env.NODE_ENV === 'development' ||
-  fs.existsSync(path.resolve(__dirname, 'dev_enabled')) ||
-  fs.existsSync(path.join(__dirname, '..', 'dev_enabled'));
+const isDev = process.env.NODE_ENV === 'development'
+let mainWindow = null
 
-let mainWindow = null;
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
-});
-
-app.on('ready', () => {
+function createWindow () {
   mainWindow = new BrowserWindow({
     fullscreen: false,
     width: 450,
@@ -29,23 +21,87 @@ app.on('ready', () => {
     frame: false,
     title: 'Championify',
     webPreferences: {
-      nodeIntegration: true
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: path.join(__dirname, 'preload.js')
     }
-  });
+  })
 
-  mainWindow.loadURL(`file://${path.join(__dirname, 'index.html')}`);
-  
-  if (devEnabled) {
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
-  }
+  if (isDev) {
+    mainWindow.loadURL('http://localhost:3000')
+    mainWindow.webContents.openDevTools()
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '.webpack/renderer', 'index.html'))
+  };
 
-  mainWindow.webContents.on('did-finish-load', () => {
-    if (!R.contains('--autorun', process.argv)) {
-      mainWindow.show();
-    }
-  });
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show()
+  })
 
   mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
-});
+    mainWindow = null
+  })
+};
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit()
+  };
+})
+
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow()
+  };
+})
+
+// IPC handlers
+ipcMain.handle('show-dialog', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+  })
+  return result
+})
+
+ipcMain.on('minimize-window', () => {
+  if (mainWindow) {
+    mainWindow.minimize()
+  };
+})
+
+ipcMain.handle('elevate', (event, params) => {
+  if (process.platform !== 'win32') {
+    throw new Error('Elevation is only implemented for Windows')
+  }
+
+  const browserWindow = BrowserWindow.fromId(event.sender.id)
+
+  browserWindow.hide()
+
+  const command = `powershell -Command "Start-Process '${process.execPath}' -ArgumentList '--runned-as-admin ${params.join(' ')}' -Verb RunAs"`
+
+  return new Promise((resolve, reject) => {
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        browserWindow.show()
+        return reject(new Error(`Failed to elevate permissions: ${stderr}`))
+      }
+      app.quit()
+    })
+  })
+})
+
+ipcMain.on('update-progress', (event, progress) => {
+  const browserWindow = BrowserWindow.fromId(event.sender.id)
+
+  if (progress >= 100) {
+    browserWindow.setProgressBar(-1) // Indeterminate state
+  } else {
+    browserWindow.setProgressBar(progress / 100) // Set the progress value
+  }
+})
+
+app.whenReady().then(() => {
+  initAutoUpdater()
+  createWindow()
+})

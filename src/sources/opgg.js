@@ -1,6 +1,5 @@
 import Promise from 'bluebird';
 import cheerio from 'cheerio';
-import R from 'ramda';
 
 import { arrayToBuilds, cl, request, shorthandSkills, trinksCon } from '../helpers';
 import Log from '../logger';
@@ -8,9 +7,9 @@ import progressbar from '../progressbar';
 import store from '../store';
 import T from '../translate';
 
-const csspaths = require('../../data/csspaths.json');
-const default_schema = require('../../data/default.json');
-const prebuilts = require('../../data/prebuilts.json');
+import csspaths from "../../data/csspaths.json" with { type: "json" };
+import default_schema from "../../data/default.json" with { type: "json" };
+import prebuilts from "../../data/prebuilts.json" with { type: "json" };
 
 const templates = {
   combindedStart: (pickrate, winrate) => `${T.t('frequent', true)}/${T.t('highest_start', true)} - Winrate: ${winrate}, Pickrate: ${pickrate}%`,
@@ -33,53 +32,58 @@ export const source_info = {
 };
 
 function pickWinrate(items) {
-  return R.last(R.sortBy(R.prop('winrate'), items));
+  return items.sort((a, b) => a.winrate - b.winrate).pop();
 }
 
 function pickPickrate(items) {
-  return R.last(R.sortBy(R.prop('pickrate'), items));
+  return items.sort((a, b) => a.pickrate - b.pickrate).pop();
 }
 
 function createBlock(templateFunc, rate_type, items, appended_items = []) {
-  const entry = R.last(R.sortBy(R.prop(rate_type), items));
-  items = entry.items.concat(appended_items);
+  const entry = items.sort((a, b) => a[rate_type] - b[rate_type]).pop();
+  const combinedItems = entry.items.concat(appended_items);
   return {
-    items: arrayToBuilds(items),
+    items: arrayToBuilds(combinedItems),
     type: templateFunc(entry[rate_type]),
     rate: entry[rate_type]
   };
 }
 
 function createSituationalItemsBlock(templateFunc, rate_type, items) {
-  const sorted = R.reverse(R.sortBy(R.prop(rate_type), items));
+  const sorted = items.sort((a, b) => b[rate_type] - a[rate_type]);
   const rate = `${sorted[0][rate_type]}-${sorted[5][rate_type]}`;
   return {
-    items: arrayToBuilds(R.pluck('items', sorted).slice(0, 6)),
+    items: arrayToBuilds(sorted.slice(0, 6).map(item => item.items)),
     type: templateFunc(rate),
     rate
   };
 }
 
 function mergeBlocks(templateFunc, pickrate, winrate) {
-  if (R.equals(pickrate, winrate)) return {
-    items: pickrate.items,
-    type: templateFunc(pickrate.rate, winrate.rate)
-  };
-
+  if (JSON.stringify(pickrate) === JSON.stringify(winrate)) {
+    return {
+      items: pickrate.items,
+      type: templateFunc(pickrate.rate, winrate.rate)
+    };
+  }
   return [pickrate, winrate];
 }
 
 function formatForStore(champ, position, skills, set_type, file_prefix, blocks) {
   let title = T.t(position, true);
   if (set_type) title += ` ${set_type}`;
-  const riot_json = R.merge(default_schema, {
+  const riot_json = {
+    ...default_schema,
     champion: champ,
     title: `OPGG ${title} ${store.get('opgg_ver')}`,
-    blocks: trinksCon(R.map(R.omit(['rate']), blocks), skills)
-  });
+    blocks: trinksCon(blocks.map(block => {
+      const { rate, ...rest } = block;
+      return rest;
+    }), skills)
+  };
 
   if (store.get('settings').locksr) riot_json.map = 'SR';
-  return {champ, file_prefix, riot_json, source: 'opgg'};
+  return { champ, file_prefix, riot_json, source: 'opgg' };
 }
 
 function mapItems($, selector) {
@@ -87,7 +91,7 @@ function mapItems($, selector) {
     .map((idx, el) => {
       el = $(el);
       const items = el.find('img')
-        .map((idx, item_el) => R.last($(item_el).attr('src').split('/')).split('.')[0])
+        .map((idx, item_el) => $(item_el).attr('src').split('/').pop().split('.')[0])
         .filter(entry => entry !== 'blet')
         .get();
 
@@ -109,9 +113,9 @@ function mapItems($, selector) {
         .eq(0)
         .text()
         .replace(/[^0-9.]/g, '')
-    );
+      );
 
-      return {items, pickrate, winrate};
+      return { items, pickrate, winrate };
     })
     .get();
 }
@@ -123,17 +127,19 @@ function mapSkills($, selector) {
       const pickrate = el.find('.champion-stats__table__cell--pickrate').text().split('%')[0].replace(/[^0-9.]/g, '').trim() + '%';
       const winrate = el.find('.champion-stats__table__cell--winrate').text().split('%')[0].replace(/[^0-9.]/g, '').trim() + '%';
       const skills = el.find('tr').eq(1).text().replace(/[^A-Z]/g, '').split('');
-      return {skills, pickrate, winrate};
+      return { skills, pickrate, winrate };
     })
     .get();
 
   const pickrate = pickPickrate(skills);
   const winrate = pickWinrate(skills);
 
-  if (store.get('settings').skillsformat) return {
-    most_freq: shorthandSkills(pickrate.skills),
-    highest_win: shorthandSkills(winrate.skills)
-  };
+  if (store.get('settings').skillsformat) {
+    return {
+      most_freq: shorthandSkills(pickrate.skills),
+      highest_win: shorthandSkills(winrate.skills)
+    };
+  }
   return {
     most_freq: pickrate.skills.join('.'),
     highest_win: pickrate.skills.join('.')
@@ -156,7 +162,7 @@ function _makeRequest(url) {
 export function getVersion() {
   return request('https://www.op.gg/champion/ahri/statistics/mid')
     .then(cheerio.load)
-    .then($ => R.last($('.champion-stats-header-version').text().split(':')).trim())
+    .then($ => $('.champion-stats-header-version').text().split(':').pop().trim())
     .tap(version => store.set('opgg_ver', version));
 }
 
@@ -194,29 +200,31 @@ export function getSr() {
           const items = mapItems($i, csspaths.opgg.items);
           let boots = mapItems($i, csspaths.opgg.boots);
           // Snakes don't wear boots
-          if (!boots.length) boots = [{items: [], winrate: 0, pickrate: 0}];
+          if (!boots.length) boots = [{ items: [], winrate: 0, pickrate: 0 }];
 
           const winrate = [
-            createBlock(templates.winStart, 'winrate', starter, R.pluck('id', prebuilts.trinkets)),
+            createBlock(templates.winStart, 'winrate', starter, prebuilts.trinkets.map(t => t.id)),
             createBlock(templates.winCore, 'winrate', core, pickWinrate(boots).items),
             createSituationalItemsBlock(templates.winItems, 'winrate', items)
           ];
           const pickrate = [
-            createBlock(templates.pickStart, 'pickrate', starter, R.pluck('id', prebuilts.trinkets)),
+            createBlock(templates.pickStart, 'pickrate', starter, prebuilts.trinkets.map(t => t.id)),
             createBlock(templates.pickCore, 'pickrate', core, pickPickrate(boots).items),
             createSituationalItemsBlock(templates.pickItems, 'pickrate', items)
           ];
 
-          if (store.get('settings').splititems) return [
-            formatForStore(champ_data.name, position, skills, T.t('most_freq', true), `${position}_mostfreq`, pickrate),
-            formatForStore(champ_data.name, position, skills, T.t('highest_win', true), `${position}_highwin`, winrate)
-          ];
+          if (store.get('settings').splititems) {
+            return [
+              formatForStore(champ_data.name, position, skills, T.t('most_freq', true), `${position}_mostfreq`, pickrate),
+              formatForStore(champ_data.name, position, skills, T.t('highest_win', true), `${position}_highwin`, winrate)
+            ];
+          }
 
-          const merged_blocks = R.flatten([
+          const merged_blocks = [
             mergeBlocks(templates.combindedStart, pickrate[0], winrate[0]),
             mergeBlocks(templates.combindedStart, pickrate[1], winrate[1]),
             mergeBlocks(templates.combindedStart, pickrate[2], winrate[2])
-          ]);
+          ].flat();
 
           return formatForStore(champ_data.name, position, skills, null, position, merged_blocks);
         })
@@ -228,11 +236,10 @@ export function getSr() {
             position: champ_data.positions
           });
         });
-      }, {concurrency: 1})
+      }, { concurrency: 1 })
       .tap(() => progressbar.incrChamp());
-    }, {concurrency: 3})
-    .then(R.flatten)
-    .then(R.reject(R.isNil))
+    }, { concurrency: 3 })
+    .then(data => data.flat())
+    .then(data => data.filter(item => item !== null))
     .then(data => store.push('sr_itemsets', data));
 }
-

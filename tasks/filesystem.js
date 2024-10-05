@@ -1,13 +1,12 @@
 import Promise from 'bluebird';
 import clean from 'gulp-clean';
-import del from 'del';
-import glob from 'glob';
+import { glob } from 'glob';
 import gulp from 'gulp';
 import path from 'path';
 import runSequence from 'run-sequence';
 
 const fs = Promise.promisifyAll(require('fs-extra'));
-const pkg = require('../package.json');
+import pkg from "../package.json" with { type: "json" };
 
 
 gulp.task('mkdir:app', function() {
@@ -112,7 +111,7 @@ gulp.task('move:compiled-mac:folder', function(cb) {
 });
 
 gulp.task('clean:node_modules', function() {
-  return del([
+  return fs.removeAsync([
     './dev/node_modules/.bin',
     './dev/node_modules/**/*.md',
     './dev/node_modules/**/*.txt',
@@ -129,14 +128,7 @@ gulp.task('clean:node_modules', function() {
     './dev/node_modules/**/test',
     './dev/node_modules/**/tests',
     './dev/node_modules/**/tst',
-
-    './dev/node_modules/jquery/src/**',
-    './dev/node_modules/jquery/sizzle/**',
-    './dev/node_modules/jquery/dist/jquery.js',
-    './dev/node_modules/jquery/dist/jquery.slim.js',
-    './dev/node_modules/jquery/dist/jquery.slim.min.js',
-    './dev/node_modules/jquery/dist/jquery.slim.min.map',
-
+    
     './dev/node_modules/**/async/dist',
     './dev/node_modules/hawk/dist',
     './dev/node_modules/qs/dist',
@@ -158,9 +150,6 @@ gulp.task('clean:node_modules', function() {
     './dev/node_modules/har-validator/node_modules/bluebird/js/browser/**',
 
     './dev/node_modules/escodegen/node_modules/esprima/test/**',
-
-    './dev/node_modules/ramda/src/**',
-    './dev/node_modules/ramda/dist/ramda.min.js',
 
     './dev/node_modules/uglify-js/node_modules/source-map/dist/**',
 

@@ -1,38 +1,38 @@
-const T = require(`../${global.src_path}/translate`).default;
+const T = require(`../${global.src_path}/translate`).default
 
-const should = require('chai').should();
+const should = require('chai').should()
 
 describe('src/translate', () => {
   before(() => {
-    T.loadPhrases('ko');
-  });
+    T.loadPhrases('ko')
+  })
 
   after(() => {
-    T.loadPhrases('en');
-  });
+    T.loadPhrases('en')
+  })
 
   it('should the set locale', () => {
-    T.locale.should.equal('ko');
-  });
+    T.locale.should.equal('ko')
+  })
 
   it('should merge phrases', () => {
-    T.merge({test_phrase: '123'});
-    T.t('test_phrase').should.equal('123');
-  });
+    T.merge({ test_phrase: '123' })
+    T.t('test_phrase').should.equal('123')
+  })
 
   it('should throw an error when a phrase doesn\'t exist', () => {
     try {
-      T.t('blahblah');
+      T.t('blahblah')
     } catch (err) {
-      should.exist(err);
+      should.exist(err)
     }
-  });
+  })
 
   it('should throw an error when a language doesn\'t exist', () => {
     try {
-      T.loadPhrases('klingon');
+      T.loadPhrases('klingon')
     } catch (err) {
-      should.exist(err);
+      should.exist(err)
     }
-  });
-});
+  })
+})
